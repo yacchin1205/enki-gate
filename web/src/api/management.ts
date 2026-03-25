@@ -90,3 +90,8 @@ export async function authorizeDeviceFlow(input: {
 
   return parseJson(response);
 }
+
+export async function getDeviceFlowStatus(userCode: string) {
+  const response = await fetch(`${apiBaseUrl}/api/device-flows/${encodeURIComponent(userCode)}/status`);
+  return parseJson(response) as Promise<{ status: "pending" | "authorized" | "completed" | "expired" }>;
+}

@@ -3,6 +3,7 @@ import { Readable } from "node:stream";
 import { Logging } from "@google-cloud/logging";
 import { initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore, Timestamp, type Transaction } from "firebase-admin/firestore";
+import { logger } from "firebase-functions";
 import { onRequest, type Request } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import {
@@ -311,7 +312,7 @@ type AuditUsageEvent = {
 };
 
 function auditUsageEventFromEntry(entry: any): AuditUsageEvent | null {
-  const payload = entry.metadata?.jsonPayload;
+  const payload = entry.data;
   if (payload?.audit !== true) {
     return null;
   }
@@ -390,6 +391,10 @@ async function rebuildGrantUsageSummaryCache() {
     pageSize: 1000,
     orderBy: "timestamp desc",
   });
+  logger.info("refreshGrantUsageSummaries: loaded logging entries", {
+    filter,
+    entryCount: entries.length,
+  });
 
   const eventsByGrant = new Map<string, AuditUsageEvent[]>();
   for (const entry of entries) {
@@ -402,9 +407,21 @@ async function rebuildGrantUsageSummaryCache() {
     existing.push(event);
     eventsByGrant.set(event.grantId, existing);
   }
+  logger.info("refreshGrantUsageSummaries: grouped events by grant", {
+    grantCount: eventsByGrant.size,
+    grants: Array.from(eventsByGrant.entries()).map(([grantId, events]) => ({
+      grantId,
+      eventCount: events.length,
+      dates: sevenDayUsageSummary(events),
+    })),
+  });
 
   const grantsSnapshot = await db.collection(COLLECTIONS.grants).get();
   const updatedAt = nowTimestamp();
+  logger.info("refreshGrantUsageSummaries: loaded grants", {
+    grantDocumentCount: grantsSnapshot.size,
+    grantIds: grantsSnapshot.docs.map((snapshot) => snapshot.id),
+  });
   let refs: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>[] = [];
   for (const snapshot of grantsSnapshot.docs) {
     refs.push(snapshot.ref);
@@ -415,6 +432,10 @@ async function rebuildGrantUsageSummaryCache() {
   }
 
   await updateGrantUsageSummaryBatch(refs, updatedAt, eventsByGrant);
+  logger.info("refreshGrantUsageSummaries: updated grants", {
+    updatedGrantCount: grantsSnapshot.size,
+    updatedAt: updatedAt.toDate().toISOString(),
+  });
 }
 
 async function proxyUpstreamResponse(upstream: Response, response: JsonResponse & {
@@ -480,6 +501,21 @@ async function handleStartDeviceFlow(request: Request, response: JsonResponse) {
   };
 
   response.json(payload);
+}
+
+async function handleGetDeviceFlowStatus(response: JsonResponse, userCode: string) {
+  const snapshot = await db.collection(COLLECTIONS.deviceFlows).doc(userCode).get();
+  if (!snapshot.exists) {
+    throw new HttpError(404, "device_flow_not_found");
+  }
+
+  const deviceFlow = snapshot.data() as StoredDeviceFlowDocument;
+  if (deviceFlow.expiresAt.toMillis() <= Date.now()) {
+    response.json({ status: "expired" });
+    return;
+  }
+
+  response.json({ status: deviceFlow.status });
 }
 
 async function handlePollDeviceFlow(response: JsonResponse, deviceCode: string) {
@@ -881,6 +917,12 @@ export const api = onRequest({ cors: true, region }, async (request, response) =
     const deviceFlowPollMatch = path.match(/^\/api\/device-flows\/([^/]+)\/poll$/);
     if (request.method === "POST" && deviceFlowPollMatch !== null) {
       await handlePollDeviceFlow(response, decodeURIComponent(deviceFlowPollMatch[1]));
+      return;
+    }
+
+    const deviceFlowStatusMatch = path.match(/^\/api\/device-flows\/([^/]+)\/status$/);
+    if (request.method === "GET" && deviceFlowStatusMatch !== null) {
+      await handleGetDeviceFlowStatus(response, decodeURIComponent(deviceFlowStatusMatch[1]));
       return;
     }
 

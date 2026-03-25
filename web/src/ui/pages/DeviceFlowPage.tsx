@@ -1,4 +1,5 @@
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import GoogleIcon from "@mui/icons-material/Google";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -13,12 +14,14 @@ import Radio from "@mui/material/Radio";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { useRef, type ChangeEvent, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
 import { useMemo, useState } from "react";
-import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { authorizeDeviceFlow } from "../../api/management";
 import { useAuth } from "../../auth/AuthProvider";
 import { useAvailableCredentials } from "../../credentials/useAvailableCredentials";
+import { auth } from "../../lib/firebase";
 import { FormNotice } from "../components/FormNotice";
 import { providerLabel } from "../providerLabel";
 import { statusLabel } from "../statusLabel";
@@ -34,7 +37,6 @@ function normalizeFullUserCode(value: string) {
 export function DeviceFlowPage() {
   const { ready, user } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [userCodeCharacters, setUserCodeCharacters] = useState<string[]>(["", "", "", "", "", "", "", ""]);
   const [step, setStep] = useState<"userCode" | "credential">("userCode");
@@ -138,11 +140,18 @@ export function DeviceFlowPage() {
       <Paper sx={{ p: 4 }} variant="outlined">
         <Stack spacing={3}>
           <Typography variant="h5">ユーザーコード</Typography>
-          <Typography color="text.secondary">
-            クライアントに表示されたユーザーコードを入力してください。
-          </Typography>
-          <Button component={RouterLink} state={{ from: location.pathname }} to="/sign-in" variant="contained">
-            サインイン
+          <Typography color="text.secondary">続行するにはサインインしてください。</Typography>
+          <Button
+            startIcon={<GoogleIcon />}
+            onClick={() => {
+              const provider = new GoogleAuthProvider();
+              provider.setCustomParameters({ prompt: "select_account" });
+              void signInWithPopup(auth, provider);
+            }}
+            type="button"
+            variant="contained"
+          >
+            Google でサインイン
           </Button>
         </Stack>
       </Paper>
