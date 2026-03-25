@@ -1,5 +1,6 @@
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import GoogleIcon from "@mui/icons-material/Google";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -18,7 +19,7 @@ import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { useRef, type ChangeEvent, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
 import { useMemo, useState } from "react";
 import { useIntl } from "react-intl";
-import { useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { authorizeDeviceFlow } from "../../api/management";
 import { useAuth } from "../../auth/AuthProvider";
 import { useAvailableCredentials } from "../../credentials/useAvailableCredentials";
@@ -66,6 +67,14 @@ export function DeviceFlowPage() {
   }
 
   function handleCharacterKeyDown(index: number, event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (isUserCodeReady) {
+        setStep("credential");
+      }
+      return;
+    }
+
     if (event.key === "Backspace" && userCodeCharacters[index] === "" && index > 0) {
       inputRefs.current[index - 1]?.focus();
     }
@@ -141,7 +150,7 @@ export function DeviceFlowPage() {
     return (
       <Paper sx={{ p: 4 }} variant="outlined">
         <Stack spacing={3}>
-          <Typography variant="h5">{intl.formatMessage({ id: "deviceFlow.title" })}</Typography>
+          <Typography variant="h5">{intl.formatMessage({ id: "deviceFlow.signInTitle" })}</Typography>
           <Typography color="text.secondary">{intl.formatMessage({ id: "deviceFlow.signInPrompt" })}</Typography>
           <Button
             startIcon={<GoogleIcon />}
@@ -165,7 +174,7 @@ export function DeviceFlowPage() {
       <Stack spacing={3}>
         {step === "userCode" ? (
           <>
-            <Typography variant="h5">{intl.formatMessage({ id: "deviceFlow.title" })}</Typography>
+            <Typography variant="h5">{intl.formatMessage({ id: "deviceFlow.userCodeTitle" })}</Typography>
             <Typography color="text.secondary">
               {intl.formatMessage({ id: "deviceFlow.enterPrompt" })}
             </Typography>
@@ -204,11 +213,20 @@ export function DeviceFlowPage() {
         {step === "credential" ? (
           <Stack spacing={3}>
             <Typography variant="h6">{intl.formatMessage({ id: "deviceFlow.selectCredential" })}</Typography>
-            <Box>
-              <Chip
-                label={intl.formatMessage({ id: "deviceFlow.userCodeChip" }, { userCode })}
-                variant="outlined"
-              />
+            <Typography color="text.secondary">
+              {intl.formatMessage({ id: "deviceFlow.selectCredentialDescription" }, { userCode })}
+            </Typography>
+            <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+              <Button
+                component={RouterLink}
+                endIcon={<OpenInNewIcon />}
+                rel="noopener noreferrer"
+                target="_blank"
+                to="/credentials"
+                variant="text"
+              >
+                {intl.formatMessage({ id: "deviceFlow.registerCredential" })}
+              </Button>
             </Box>
             {loading ? (
               <Stack alignItems="center" sx={{ py: 4 }}>
