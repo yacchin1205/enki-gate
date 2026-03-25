@@ -4,6 +4,7 @@ import { Logging } from "@google-cloud/logging";
 import { initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore, Timestamp, type Transaction } from "firebase-admin/firestore";
 import { logger } from "firebase-functions";
+import { defineString } from "firebase-functions/params";
 import { onRequest, type Request } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import {
@@ -36,6 +37,7 @@ initializeApp();
 const db = getFirestore();
 const logging = new Logging();
 const region = "asia-northeast1";
+const webAppOrigin = defineString("WEB_APP_ORIGIN");
 
 function nowTimestamp() {
   return Timestamp.now();
@@ -86,7 +88,12 @@ function sha256(value: string) {
 }
 
 function verificationUri(request: Request) {
-  return `${request.protocol}://${request.get("host")}/device`;
+  const origin = webAppOrigin.value();
+  if (origin.length === 0) {
+    throw new HttpError(500, "web_app_origin_not_configured");
+  }
+
+  return `${origin.replace(/\/+$/, "")}/device`;
 }
 
 function requestPath(request: Request) {
@@ -624,20 +631,25 @@ async function handlePollDeviceFlow(response: JsonResponse, deviceCode: string) 
   const issuedAt = nowTimestamp();
   const expiresAt = expiresAtAfter(GATEWAY_TOKEN_EXPIRES_IN_SECONDS);
   const issuanceRef = db.collection(COLLECTIONS.tokenIssuances).doc();
+  const issuanceDocument: Record<string, unknown> = {
+    actorUid: issuanceFields.actorUid,
+    actorEmail: issuanceFields.actorEmail,
+    credentialId: issuanceFields.credentialId,
+    credentialOwnerUid: issuanceFields.credentialOwnerUid,
+    accessScopeType: issuanceFields.accessScopeType,
+    tokenHash,
+    issuedAt,
+    expiresAt,
+  };
+  if (issuanceFields.accessScopeValue !== undefined) {
+    issuanceDocument.accessScopeValue = issuanceFields.accessScopeValue;
+  }
+  if (issuanceFields.grantId !== undefined) {
+    issuanceDocument.grantId = issuanceFields.grantId;
+  }
 
   await db.runTransaction(async (transaction) => {
-    transaction.create(issuanceRef, {
-      actorUid: issuanceFields.actorUid,
-      actorEmail: issuanceFields.actorEmail,
-      credentialId: issuanceFields.credentialId,
-      credentialOwnerUid: issuanceFields.credentialOwnerUid,
-      accessScopeType: issuanceFields.accessScopeType,
-      accessScopeValue: issuanceFields.accessScopeValue,
-      grantId: issuanceFields.grantId,
-      tokenHash,
-      issuedAt,
-      expiresAt,
-    } satisfies StoredTokenIssuanceDocument);
+    transaction.create(issuanceRef, issuanceDocument as StoredTokenIssuanceDocument);
     transaction.update(deviceFlowRef, {
       status: "completed",
       tokenHash,
@@ -956,17 +968,23 @@ async function handleAuthorizeDeviceFlow(request: Request, response: JsonRespons
   const accessScope = resolveAccessScope(credentialId, credential, actor);
 
   const authorizedAt = nowTimestamp();
-  await deviceFlowRef.update({
+  const authorizedDeviceFlowUpdate: Record<string, unknown> = {
     status: "authorized",
     credentialId,
     credentialOwnerUid: credential.ownerUid,
     actorUid: actor.uid,
     actorEmail: actor.email,
     accessScopeType: accessScope.accessScopeType,
-    accessScopeValue: accessScope.accessScopeValue,
-    grantId: accessScope.grantId,
     authorizedAt,
-  });
+  };
+  if (accessScope.accessScopeValue !== undefined) {
+    authorizedDeviceFlowUpdate.accessScopeValue = accessScope.accessScopeValue;
+  }
+  if (accessScope.grantId !== undefined) {
+    authorizedDeviceFlowUpdate.grantId = accessScope.grantId;
+  }
+
+  await deviceFlowRef.update(authorizedDeviceFlowUpdate);
 
   writeAuditLog({
     actorUid: actor.uid,
