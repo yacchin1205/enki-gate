@@ -17,6 +17,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import { useMemo, useState } from "react";
+import { useIntl } from "react-intl";
 import { Link as RouterLink, useParams } from "react-router-dom";
 import { disableCredential, revokeGrant } from "../../api/management";
 import { useAuth } from "../../auth/AuthProvider";
@@ -28,41 +29,45 @@ import { granteeTypeLabel } from "../granteeTypeLabel";
 import { providerLabel } from "../providerLabel";
 import { statusLabel } from "../statusLabel";
 
-function formatDate(value: Date | undefined) {
+function formatDate(intl: ReturnType<typeof useIntl>, value: Date | undefined) {
   if (value === undefined) {
-    return "—";
+    return intl.formatMessage({ id: "common.none" });
   }
 
-  return value.toLocaleString("ja-JP");
+  return intl.formatDate(value, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 }
 
-function formatRelativeTime(value: Date | undefined) {
+function formatRelativeTime(intl: ReturnType<typeof useIntl>, value: Date | undefined) {
   if (value === undefined) {
-    return "—";
+    return intl.formatMessage({ id: "common.none" });
   }
 
   const diffSeconds = Math.max(0, Math.floor((Date.now() - value.getTime()) / 1000));
   if (diffSeconds < 60) {
-    return `${diffSeconds}秒前`;
+    return intl.formatRelativeTime(-diffSeconds, "second");
   }
 
   const diffMinutes = Math.floor(diffSeconds / 60);
   if (diffMinutes < 60) {
-    return `${diffMinutes}分前`;
+    return intl.formatRelativeTime(-diffMinutes, "minute");
   }
 
   const diffHours = Math.floor(diffMinutes / 60);
   if (diffHours < 24) {
-    return `${diffHours}時間前`;
+    return intl.formatRelativeTime(-diffHours, "hour");
   }
 
   const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}日前`;
+  return intl.formatRelativeTime(-diffDays, "day");
 }
 
 export function CredentialDetailPage() {
   const { credentialId } = useParams();
   const { user } = useAuth();
+  const intl = useIntl();
   const { credential, loading: credentialLoading, error: credentialError } = useCredential(credentialId);
   const { grants, loading: grantsLoading, error: grantsError } = useOwnedGrants(user?.uid ?? null, credentialId);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -105,14 +110,17 @@ export function CredentialDetailPage() {
     <Stack spacing={3}>
       <Stack alignItems="center" direction="row" justifyContent="space-between" spacing={2}>
         <Stack direction="row" spacing={1.5}>
-          <Typography variant="h4">{credential?.label ?? "認証情報 詳細"}</Typography>
+          <Typography variant="h4">{credential?.label ?? intl.formatMessage({ id: "credentialDetail.fallbackTitle" })}</Typography>
           {credential !== null ? (
-            <Chip color={credential.status === "active" ? "success" : "default"} label={statusLabel(credential.status)} />
+            <Chip
+              color={credential.status === "active" ? "success" : "default"}
+              label={statusLabel(intl, credential.status)}
+            />
           ) : null}
         </Stack>
         {isOwner ? (
           <Button color="inherit" onClick={() => void handleDisable()} type="button" variant="outlined">
-            無効化
+            {intl.formatMessage({ id: "credentialDetail.disable" })}
           </Button>
         ) : null}
       </Stack>
@@ -130,16 +138,25 @@ export function CredentialDetailPage() {
         <Paper variant="outlined">
           <List disablePadding>
             <ListItem divider>
-              <ListItemText primary="プロバイダ" secondary={providerLabel(credential.provider)} />
+              <ListItemText
+                primary={intl.formatMessage({ id: "credentialDetail.provider" })}
+                secondary={providerLabel(intl, credential.provider)}
+              />
             </ListItem>
             <ListItem divider>
-              <ListItemText primary="所有者" secondary={credential.ownerEmail} />
+              <ListItemText primary={intl.formatMessage({ id: "credentialDetail.owner" })} secondary={credential.ownerEmail} />
             </ListItem>
             <ListItem divider>
-              <ListItemText primary="作成日時" secondary={formatDate(credential.createdAt)} />
+              <ListItemText
+                primary={intl.formatMessage({ id: "credentialDetail.createdAt" })}
+                secondary={formatDate(intl, credential.createdAt)}
+              />
             </ListItem>
             <ListItem>
-              <ListItemText primary="更新日時" secondary={formatDate(credential.updatedAt)} />
+              <ListItemText
+                primary={intl.formatMessage({ id: "credentialDetail.updatedAt" })}
+                secondary={formatDate(intl, credential.updatedAt)}
+              />
             </ListItem>
           </List>
         </Paper>
@@ -148,14 +165,14 @@ export function CredentialDetailPage() {
       {isOwner ? (
         <>
           <Stack alignItems="center" direction="row" justifyContent="space-between" spacing={2}>
-            <Typography variant="h5">共有</Typography>
+            <Typography variant="h5">{intl.formatMessage({ id: "credentialDetail.sharingSection" })}</Typography>
             <Button
               component={RouterLink}
               startIcon={<AddIcon />}
               to={`/credentials/${credentialId}/grants/new`}
               variant="contained"
             >
-              共有を追加
+              {intl.formatMessage({ id: "credentialDetail.addSharing" })}
             </Button>
           </Stack>
 
@@ -163,27 +180,29 @@ export function CredentialDetailPage() {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>種類</TableCell>
-                  <TableCell>共有先</TableCell>
-                  <TableCell>直近7日</TableCell>
-                  <TableCell align="right">回数</TableCell>
-                  <TableCell>直近アクセス</TableCell>
-                  <TableCell>作成日時</TableCell>
-                  <TableCell align="right">操作</TableCell>
+                  <TableCell>{intl.formatMessage({ id: "credentialDetail.table.type" })}</TableCell>
+                  <TableCell>{intl.formatMessage({ id: "credentialDetail.table.target" })}</TableCell>
+                  <TableCell>{intl.formatMessage({ id: "credentialDetail.table.last7d" })}</TableCell>
+                  <TableCell align="right">{intl.formatMessage({ id: "credentialDetail.table.count" })}</TableCell>
+                  <TableCell>{intl.formatMessage({ id: "credentialDetail.table.lastAccess" })}</TableCell>
+                  <TableCell>{intl.formatMessage({ id: "credentialDetail.table.createdAt" })}</TableCell>
+                  <TableCell align="right">{intl.formatMessage({ id: "credentialDetail.table.action" })}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {grantsWithUsage.map(({ grant, totalCount, sparklineValues }) => (
                   <TableRow hover key={grant.id}>
-                    <TableCell>{granteeTypeLabel(grant.granteeType)}</TableCell>
+                    <TableCell>{granteeTypeLabel(intl, grant.granteeType)}</TableCell>
                     <TableCell>{grant.granteeValue}</TableCell>
-                    <TableCell>{grant.usageSummary7d.length > 0 ? <Sparkline values={sparklineValues} /> : "—"}</TableCell>
+                    <TableCell>
+                      {grant.usageSummary7d.length > 0 ? <Sparkline values={sparklineValues} /> : intl.formatMessage({ id: "common.none" })}
+                    </TableCell>
                     <TableCell align="right">{totalCount}</TableCell>
-                    <TableCell>{formatRelativeTime(grant.lastAccessAt)}</TableCell>
-                    <TableCell>{formatDate(grant.createdAt)}</TableCell>
+                    <TableCell>{formatRelativeTime(intl, grant.lastAccessAt)}</TableCell>
+                    <TableCell>{formatDate(intl, grant.createdAt)}</TableCell>
                     <TableCell align="right">
                       <Button color="inherit" onClick={() => void handleRevoke(grant.id)} size="small" type="button">
-                        取り消し
+                        {intl.formatMessage({ id: "credentialDetail.revoke" })}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -197,7 +216,7 @@ export function CredentialDetailPage() {
             ) : null}
             {!grantsLoading && grants.length === 0 ? (
               <Box sx={{ p: 3 }}>
-                <Alert severity="info">共有はまだありません。</Alert>
+                <Alert severity="info">{intl.formatMessage({ id: "credentialDetail.emptyGrants" })}</Alert>
               </Box>
             ) : null}
           </TableContainer>

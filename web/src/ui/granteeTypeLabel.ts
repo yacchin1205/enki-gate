@@ -1,10 +1,11 @@
 import type { GrantGranteeType } from "@enki-gate/domain";
+import type { IntlShape } from "react-intl";
 
-export function granteeTypeLabel(granteeType: GrantGranteeType) {
+export function granteeTypeLabel(intl: IntlShape, granteeType: GrantGranteeType) {
   switch (granteeType) {
     case "user_email":
-      return "個人メールアドレス";
+      return intl.formatMessage({ id: "granteeType.user_email" });
     case "email_domain":
-      return "メールドメイン";
+      return intl.formatMessage({ id: "granteeType.email_domain" });
   }
 }

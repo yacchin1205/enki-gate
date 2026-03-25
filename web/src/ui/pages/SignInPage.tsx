@@ -12,6 +12,7 @@ import {
   signInWithPopup,
 } from "firebase/auth";
 import { useEffect, useState, type FormEvent } from "react";
+import { useIntl } from "react-intl";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import { auth } from "../../lib/firebase";
@@ -21,6 +22,7 @@ export function SignInPage() {
   const { ready, user, error: authError } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const intl = useIntl();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const passwordAuthEnabled = import.meta.env.DEV;
@@ -57,7 +59,7 @@ export function SignInPage() {
   return (
     <Paper sx={{ p: 4 }} variant="outlined">
       <Stack spacing={3}>
-        <Typography variant="h5">サインイン</Typography>
+        <Typography variant="h5">{intl.formatMessage({ id: "signIn.title" })}</Typography>
         {authError !== null ? <FormNotice message={authError} tone="error" /> : null}
         {error !== null ? <FormNotice message={error} tone="error" /> : null}
         <Button
@@ -72,19 +74,19 @@ export function SignInPage() {
           type="button"
           variant="contained"
         >
-          Google でサインイン
+          {intl.formatMessage({ id: "signIn.googleButton" })}
         </Button>
         {passwordAuthEnabled ? (
           <>
             <Divider />
             <Box component="form" onSubmit={handleEmailPasswordSignIn}>
               <Stack spacing={2}>
-                <Typography variant="subtitle1">メールアドレス / パスワード</Typography>
-                <TextField label="メールアドレス" name="email" type="email" />
-                <TextField label="パスワード" name="password" type="password" />
+                <Typography variant="subtitle1">{intl.formatMessage({ id: "signIn.passwordSection" })}</Typography>
+                <TextField label={intl.formatMessage({ id: "signIn.email" })} name="email" type="email" />
+                <TextField label={intl.formatMessage({ id: "signIn.password" })} name="password" type="password" />
                 <Box>
                   <Button disabled={submitting} type="submit" variant="outlined">
-                    サインイン
+                    {intl.formatMessage({ id: "signIn.submit" })}
                   </Button>
                 </Box>
               </Stack>

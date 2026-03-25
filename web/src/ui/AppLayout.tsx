@@ -12,11 +12,13 @@ import Stack from "@mui/material/Stack";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import { useState, type MouseEvent } from "react";
+import { useIntl } from "react-intl";
 import { Link as RouterLink, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 
 export function AppLayout() {
   const { user } = useAuth();
+  const intl = useIntl();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
   function handleMenuOpen(event: MouseEvent<HTMLElement>) {
@@ -38,7 +40,7 @@ export function AppLayout() {
             to="/credentials"
             variant="h6"
           >
-            Enki Gate
+            {intl.formatMessage({ id: "common.appName" })}
           </Typography>
           <Stack direction="row" spacing={1} sx={{ flexGrow: 1 }}>
             <Button
@@ -49,10 +51,10 @@ export function AppLayout() {
               to="/credentials"
               variant="text"
             >
-              認証情報
+              {intl.formatMessage({ id: "nav.credentials" })}
             </Button>
             <Button color="inherit" component={RouterLink} startIcon={<AddIcon />} to="/credentials/new" variant="text">
-              新規登録
+              {intl.formatMessage({ id: "nav.newCredential" })}
             </Button>
           </Stack>
           <Button
@@ -65,7 +67,7 @@ export function AppLayout() {
           </Button>
           <Menu anchorEl={anchorEl} onClose={handleMenuClose} open={anchorEl !== null}>
             <MenuItem component={RouterLink} onClick={handleMenuClose} to="/logout">
-              ログアウト
+              {intl.formatMessage({ id: "nav.signOut" })}
             </MenuItem>
           </Menu>
         </Toolbar>

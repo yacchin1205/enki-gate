@@ -5,6 +5,7 @@ import CssBaseline from "@mui/material/CssBaseline";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { Navigate } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthProvider";
+import { I18nProvider } from "./i18n/I18nProvider";
 import { RequireAuth } from "./auth/RequireAuth";
 import { AppLayout } from "./ui/AppLayout";
 import { FlowLayout } from "./ui/FlowLayout";
@@ -75,9 +76,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <AuthProvider>
-        <RouterProvider router={router} />
-      </AuthProvider>
+      <I18nProvider>
+        <AuthProvider>
+          <RouterProvider router={router} />
+        </AuthProvider>
+      </I18nProvider>
     </ThemeProvider>
   </React.StrictMode>,
 );

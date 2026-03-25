@@ -14,6 +14,7 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
+import { useIntl } from "react-intl";
 import { Link as RouterLink } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import { useAvailableCredentials } from "../../credentials/useAvailableCredentials";
@@ -23,6 +24,7 @@ import { statusLabel } from "../statusLabel";
 
 export function CredentialsPage() {
   const { user } = useAuth();
+  const intl = useIntl();
   const { credentials, loading, error: loadError } = useAvailableCredentials(user?.uid ?? null, user?.email ?? null);
   const ownedCredentials = credentials.filter((credential) => credential.ownerUid === user?.uid);
   const sharedCredentials = credentials.filter((credential) => credential.ownerUid !== user?.uid);
@@ -30,37 +32,37 @@ export function CredentialsPage() {
   return (
     <Stack spacing={3}>
       <Stack alignItems="center" direction="row" justifyContent="space-between" spacing={2}>
-        <Typography variant="h4">認証情報</Typography>
+        <Typography variant="h4">{intl.formatMessage({ id: "credentials.title" })}</Typography>
         <Button component={RouterLink} startIcon={<AddIcon />} to="/credentials/new" variant="contained">
-          新規登録
+          {intl.formatMessage({ id: "nav.newCredential" })}
         </Button>
       </Stack>
 
       {loadError !== null ? <FormNotice message={loadError} tone="error" /> : null}
 
       <Stack spacing={2}>
-        <Typography variant="h5">自分の認証情報</Typography>
+        <Typography variant="h5">{intl.formatMessage({ id: "credentials.ownedSection" })}</Typography>
         <TableContainer component={Paper} variant="outlined">
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell>名称</TableCell>
-                <TableCell>プロバイダ</TableCell>
-                <TableCell>共有</TableCell>
-                <TableCell>状態</TableCell>
-                <TableCell align="right">操作</TableCell>
+                <TableCell>{intl.formatMessage({ id: "credentials.table.name" })}</TableCell>
+                <TableCell>{intl.formatMessage({ id: "credentials.table.provider" })}</TableCell>
+                <TableCell>{intl.formatMessage({ id: "credentials.table.shareCount" })}</TableCell>
+                <TableCell>{intl.formatMessage({ id: "credentials.table.status" })}</TableCell>
+                <TableCell align="right">{intl.formatMessage({ id: "credentials.table.action" })}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {ownedCredentials.map((credential) => (
                 <TableRow hover key={credential.id}>
                   <TableCell>{credential.label}</TableCell>
-                  <TableCell>{providerLabel(credential.provider)}</TableCell>
+                  <TableCell>{providerLabel(intl, credential.provider)}</TableCell>
                   <TableCell>{credential.allowedUserEmails.length + credential.allowedDomains.length}</TableCell>
                   <TableCell>
                     <Chip
                       color={credential.status === "active" ? "success" : "default"}
-                      label={statusLabel(credential.status)}
+                      label={statusLabel(intl, credential.status)}
                       size="small"
                     />
                   </TableCell>
@@ -71,7 +73,7 @@ export function CredentialsPage() {
                       size="small"
                       to={`/credentials/${credential.id}`}
                     >
-                      詳細
+                      {intl.formatMessage({ id: "common.details" })}
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -88,12 +90,12 @@ export function CredentialsPage() {
               <Alert
                 action={
                   <Button component={RouterLink} size="small" to="/credentials/new">
-                    登録
+                    {intl.formatMessage({ id: "common.register" })}
                   </Button>
                 }
                 severity="info"
               >
-                自分の認証情報はまだありません。
+                {intl.formatMessage({ id: "credentials.emptyOwned" })}
               </Alert>
             </Box>
           ) : null}
@@ -101,28 +103,28 @@ export function CredentialsPage() {
       </Stack>
 
       <Stack spacing={2}>
-        <Typography variant="h5">共有された認証情報</Typography>
+        <Typography variant="h5">{intl.formatMessage({ id: "credentials.sharedSection" })}</Typography>
         <TableContainer component={Paper} variant="outlined">
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell>名称</TableCell>
-                <TableCell>プロバイダ</TableCell>
-                <TableCell>所有者</TableCell>
-                <TableCell>状態</TableCell>
-                <TableCell align="right">操作</TableCell>
+                <TableCell>{intl.formatMessage({ id: "credentials.table.name" })}</TableCell>
+                <TableCell>{intl.formatMessage({ id: "credentials.table.provider" })}</TableCell>
+                <TableCell>{intl.formatMessage({ id: "credentials.table.owner" })}</TableCell>
+                <TableCell>{intl.formatMessage({ id: "credentials.table.status" })}</TableCell>
+                <TableCell align="right">{intl.formatMessage({ id: "credentials.table.action" })}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {sharedCredentials.map((credential) => (
                 <TableRow hover key={credential.id}>
                   <TableCell>{credential.label}</TableCell>
-                  <TableCell>{providerLabel(credential.provider)}</TableCell>
+                  <TableCell>{providerLabel(intl, credential.provider)}</TableCell>
                   <TableCell>{credential.ownerEmail}</TableCell>
                   <TableCell>
                     <Chip
                       color={credential.status === "active" ? "success" : "default"}
-                      label={statusLabel(credential.status)}
+                      label={statusLabel(intl, credential.status)}
                       size="small"
                     />
                   </TableCell>
@@ -133,7 +135,7 @@ export function CredentialsPage() {
                       size="small"
                       to={`/credentials/${credential.id}`}
                     >
-                      詳細
+                      {intl.formatMessage({ id: "common.details" })}
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -142,7 +144,7 @@ export function CredentialsPage() {
           </Table>
           {!loading && sharedCredentials.length === 0 ? (
             <Box sx={{ p: 3 }}>
-              <Alert severity="info">共有された認証情報はありません。</Alert>
+              <Alert severity="info">{intl.formatMessage({ id: "credentials.emptyShared" })}</Alert>
             </Box>
           ) : null}
         </TableContainer>

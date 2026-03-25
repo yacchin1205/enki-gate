@@ -1,10 +1,11 @@
 import type { CredentialProvider } from "@enki-gate/domain";
+import type { IntlShape } from "react-intl";
 
-export function providerLabel(provider: CredentialProvider) {
+export function providerLabel(intl: IntlShape, provider: CredentialProvider) {
   switch (provider) {
     case "openai":
-      return "OpenAI";
+      return intl.formatMessage({ id: "provider.openai" });
     case "anthropic":
-      return "Anthropic";
+      return intl.formatMessage({ id: "provider.anthropic" });
   }
 }

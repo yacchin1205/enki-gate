@@ -17,6 +17,7 @@ import Typography from "@mui/material/Typography";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { useRef, type ChangeEvent, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
 import { useMemo, useState } from "react";
+import { useIntl } from "react-intl";
 import { useNavigate } from "react-router-dom";
 import { authorizeDeviceFlow } from "../../api/management";
 import { useAuth } from "../../auth/AuthProvider";
@@ -37,6 +38,7 @@ function normalizeFullUserCode(value: string) {
 export function DeviceFlowPage() {
   const { ready, user } = useAuth();
   const navigate = useNavigate();
+  const intl = useIntl();
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [userCodeCharacters, setUserCodeCharacters] = useState<string[]>(["", "", "", "", "", "", "", ""]);
   const [step, setStep] = useState<"userCode" | "credential">("userCode");
@@ -139,8 +141,8 @@ export function DeviceFlowPage() {
     return (
       <Paper sx={{ p: 4 }} variant="outlined">
         <Stack spacing={3}>
-          <Typography variant="h5">ユーザーコード</Typography>
-          <Typography color="text.secondary">続行するにはサインインしてください。</Typography>
+          <Typography variant="h5">{intl.formatMessage({ id: "deviceFlow.title" })}</Typography>
+          <Typography color="text.secondary">{intl.formatMessage({ id: "deviceFlow.signInPrompt" })}</Typography>
           <Button
             startIcon={<GoogleIcon />}
             onClick={() => {
@@ -151,7 +153,7 @@ export function DeviceFlowPage() {
             type="button"
             variant="contained"
           >
-            Google でサインイン
+            {intl.formatMessage({ id: "signIn.googleButton" })}
           </Button>
         </Stack>
       </Paper>
@@ -163,12 +165,12 @@ export function DeviceFlowPage() {
       <Stack spacing={3}>
         {step === "userCode" ? (
           <>
-            <Typography variant="h5">ユーザーコード</Typography>
+            <Typography variant="h5">{intl.formatMessage({ id: "deviceFlow.title" })}</Typography>
             <Typography color="text.secondary">
-              クライアントに表示されたユーザーコードを入力してください。
+              {intl.formatMessage({ id: "deviceFlow.enterPrompt" })}
             </Typography>
             <Stack spacing={1}>
-              <Typography variant="body2">ユーザーコード</Typography>
+              <Typography variant="body2">{intl.formatMessage({ id: "deviceFlow.codeLabel" })}</Typography>
               <Stack alignItems="center" direction="row" onPaste={handleCodePaste} spacing={1}>
                 {userCodeCharacters.map((character, index) => (
                   <TextField
@@ -194,16 +196,19 @@ export function DeviceFlowPage() {
           <Stack spacing={2}>
             <Box>
               <Button disabled={!isUserCodeReady} onClick={() => setStep("credential")} type="button" variant="contained">
-                次へ
+                {intl.formatMessage({ id: "common.next" })}
               </Button>
             </Box>
           </Stack>
         ) : null}
         {step === "credential" ? (
           <Stack spacing={3}>
-            <Typography variant="h6">認証情報を選択</Typography>
+            <Typography variant="h6">{intl.formatMessage({ id: "deviceFlow.selectCredential" })}</Typography>
             <Box>
-              <Chip label={`ユーザーコード: ${userCode}`} variant="outlined" />
+              <Chip
+                label={intl.formatMessage({ id: "deviceFlow.userCodeChip" }, { userCode })}
+                variant="outlined"
+              />
             </Box>
             {loading ? (
               <Stack alignItems="center" sx={{ py: 4 }}>
@@ -211,7 +216,7 @@ export function DeviceFlowPage() {
               </Stack>
             ) : null}
             {!loading && credentials.length === 0 ? (
-              <Alert severity="info">使える認証情報がありません。</Alert>
+              <Alert severity="info">{intl.formatMessage({ id: "deviceFlow.emptyCredentials" })}</Alert>
             ) : null}
             {credentials.length > 0 ? (
               <List disablePadding sx={{ border: 1, borderColor: "divider", borderRadius: 2 }}>
@@ -223,7 +228,7 @@ export function DeviceFlowPage() {
                     secondaryAction={
                       <Chip
                         color={credential.status === "active" ? "success" : "default"}
-                        label={statusLabel(credential.status)}
+                        label={statusLabel(intl, credential.status)}
                         size="small"
                       />
                     }
@@ -235,7 +240,7 @@ export function DeviceFlowPage() {
                       <Radio checked={selectedCredentialId === credential.id} tabIndex={-1} value={credential.id} />
                       <ListItemText
                         primary={credential.label}
-                        secondary={`${providerLabel(credential.provider)} · ${credential.ownerEmail}`}
+                        secondary={`${providerLabel(intl, credential.provider)} · ${credential.ownerEmail}`}
                       />
                     </ListItemButton>
                   </ListItem>
@@ -244,7 +249,7 @@ export function DeviceFlowPage() {
             ) : null}
             <Stack direction="row" justifyContent="space-between">
               <Button color="inherit" onClick={() => setStep("userCode")} type="button">
-                戻る
+                {intl.formatMessage({ id: "common.back" })}
               </Button>
               <Button
                 disabled={submitting || selectedCredentialId.length === 0}
@@ -252,7 +257,7 @@ export function DeviceFlowPage() {
                 type="submit"
                 variant="contained"
               >
-                この認証情報を使う
+                {intl.formatMessage({ id: "deviceFlow.useCredential" })}
               </Button>
             </Stack>
           </Stack>

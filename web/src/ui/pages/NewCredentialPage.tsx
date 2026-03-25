@@ -7,12 +7,14 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useState, type FormEvent } from "react";
+import { useIntl } from "react-intl";
 import { useNavigate } from "react-router-dom";
 import { createCredential } from "../../api/management";
 import { FormNotice } from "../components/FormNotice";
 
 export function NewCredentialPage() {
   const navigate = useNavigate();
+  const intl = useIntl();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,19 +43,23 @@ export function NewCredentialPage() {
   return (
     <Box sx={{ mx: "auto", width: "100%", maxWidth: 640 }}>
       <Stack spacing={3}>
-        <Typography variant="h4">認証情報 登録</Typography>
+        <Typography variant="h4">{intl.formatMessage({ id: "newCredential.title" })}</Typography>
         <Paper component="form" onSubmit={handleSubmit} sx={{ p: 3 }} variant="outlined">
           <Stack spacing={2.5}>
-            <TextField defaultValue="openai" label="プロバイダ" name="provider" select>
+            <TextField defaultValue="openai" label={intl.formatMessage({ id: "newCredential.provider" })} name="provider" select>
               <MenuItem value="openai">OpenAI</MenuItem>
               <MenuItem value="anthropic">Anthropic</MenuItem>
             </TextField>
-            <TextField label="名称" name="label" placeholder="OpenAI 個人用" />
-            <TextField label="API キー" name="apiKey" placeholder="sk-..." type="password" />
+            <TextField
+              label={intl.formatMessage({ id: "newCredential.label" })}
+              name="label"
+              placeholder={intl.formatMessage({ id: "newCredential.labelPlaceholder" })}
+            />
+            <TextField label={intl.formatMessage({ id: "newCredential.apiKey" })} name="apiKey" placeholder="sk-..." type="password" />
             {error !== null ? <FormNotice message={error} tone="error" /> : null}
             <Stack direction="row" justifyContent="flex-end">
               <Button disabled={submitting} type="submit" variant="contained">
-                登録
+                {intl.formatMessage({ id: "common.register" })}
               </Button>
             </Stack>
           </Stack>

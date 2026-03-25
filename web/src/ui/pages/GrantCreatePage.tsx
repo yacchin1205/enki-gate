@@ -8,6 +8,7 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useState, type FormEvent } from "react";
+import { useIntl } from "react-intl";
 import { useNavigate, useParams } from "react-router-dom";
 import { createGrant } from "../../api/management";
 import { useAuth } from "../../auth/AuthProvider";
@@ -18,6 +19,7 @@ import { providerLabel } from "../providerLabel";
 export function GrantCreatePage() {
   const { credentialId } = useParams();
   const navigate = useNavigate();
+  const intl = useIntl();
   const { user } = useAuth();
   const { credential, loading, error: credentialError } = useCredential(credentialId);
   const [submitting, setSubmitting] = useState(false);
@@ -51,7 +53,7 @@ export function GrantCreatePage() {
 
   return (
     <Stack sx={{ mx: "auto", width: "100%", maxWidth: 640 }} spacing={3}>
-      <Typography variant="h4">共有を追加</Typography>
+      <Typography variant="h4">{intl.formatMessage({ id: "grantCreate.title" })}</Typography>
       {credentialError !== null ? <FormNotice message={credentialError} tone="error" /> : null}
       {loading ? (
         <Paper sx={{ p: 4 }} variant="outlined">
@@ -63,10 +65,10 @@ export function GrantCreatePage() {
       {!loading && credential === null ? (
         <Paper sx={{ p: 3 }} variant="outlined">
           <Stack spacing={2}>
-            <Typography>認証情報が見つかりません。</Typography>
+            <Typography>{intl.formatMessage({ id: "grantCreate.notFound" })}</Typography>
             <Box>
               <Button color="inherit" onClick={() => navigate("/credentials")} type="button">
-                一覧に戻る
+                {intl.formatMessage({ id: "grantCreate.backToList" })}
               </Button>
             </Box>
           </Stack>
@@ -75,10 +77,10 @@ export function GrantCreatePage() {
       {!loading && credential !== null && !isOwner ? (
         <Paper sx={{ p: 3 }} variant="outlined">
           <Stack spacing={2}>
-            <Typography>この認証情報には共有を追加できません。</Typography>
+            <Typography>{intl.formatMessage({ id: "grantCreate.notAllowed" })}</Typography>
             <Box>
               <Button color="inherit" onClick={() => navigate(`/credentials/${credentialId}`)} type="button">
-                詳細に戻る
+                {intl.formatMessage({ id: "grantCreate.backToDetail" })}
               </Button>
             </Box>
           </Stack>
@@ -90,22 +92,22 @@ export function GrantCreatePage() {
           <Stack spacing={1}>
             <Typography variant="subtitle1">{credential.label}</Typography>
             <Stack direction="row" spacing={1}>
-              <Chip label={providerLabel(credential.provider)} size="small" variant="outlined" />
+              <Chip label={providerLabel(intl, credential.provider)} size="small" variant="outlined" />
               <Chip label={credential.ownerEmail} size="small" variant="outlined" />
             </Stack>
           </Stack>
-          <TextField defaultValue="user_email" label="共有先の種類" name="granteeType" select>
-            <MenuItem value="user_email">個人メールアドレス</MenuItem>
-            <MenuItem value="email_domain">メールドメイン</MenuItem>
+          <TextField defaultValue="user_email" label={intl.formatMessage({ id: "grantCreate.granteeType" })} name="granteeType" select>
+            <MenuItem value="user_email">{intl.formatMessage({ id: "granteeType.user_email" })}</MenuItem>
+            <MenuItem value="email_domain">{intl.formatMessage({ id: "granteeType.email_domain" })}</MenuItem>
           </TextField>
-          <TextField label="共有先" name="granteeValue" placeholder="learner@example.com" />
+          <TextField label={intl.formatMessage({ id: "grantCreate.granteeValue" })} name="granteeValue" placeholder="learner@example.com" />
           {error !== null ? <FormNotice message={error} tone="error" /> : null}
           <Stack direction="row" justifyContent="space-between">
             <Button color="inherit" onClick={() => navigate(`/credentials/${credentialId}`)} type="button">
-              戻る
+              {intl.formatMessage({ id: "common.back" })}
             </Button>
             <Button disabled={submitting} type="submit" variant="contained">
-              作成
+              {intl.formatMessage({ id: "common.create" })}
             </Button>
           </Stack>
         </Stack>

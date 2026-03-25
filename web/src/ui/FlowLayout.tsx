@@ -2,8 +2,11 @@ import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
 import Typography from "@mui/material/Typography";
 import { Outlet } from "react-router-dom";
+import { useIntl } from "react-intl";
 
 export function FlowLayout() {
+  const intl = useIntl();
+
   return (
     <Box
       sx={{
@@ -17,7 +20,7 @@ export function FlowLayout() {
       <Container maxWidth="sm">
         <Box sx={{ mb: 3 }}>
           <Typography component="h1" sx={{ fontWeight: 700 }} variant="h5">
-            Enki Gate
+            {intl.formatMessage({ id: "common.appName" })}
           </Typography>
         </Box>
         <Outlet />
