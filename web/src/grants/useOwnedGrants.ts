@@ -48,6 +48,9 @@ export function useOwnedGrants(ownerUid: string | null, credentialId: string | u
               granteeType: data.granteeType,
               granteeValue: data.granteeValue,
               createdAt: data.createdAt.toDate(),
+              lastAccessAt: data.lastAccessAt?.toDate(),
+              usageSummary7d: Array.isArray(data.usageSummary7d) ? data.usageSummary7d : [],
+              usageUpdatedAt: data.usageUpdatedAt?.toDate(),
             };
           }),
         );

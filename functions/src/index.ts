@@ -1,9 +1,12 @@
 import crypto from "node:crypto";
 import { Readable } from "node:stream";
+import { Logging } from "@google-cloud/logging";
 import { initializeApp } from "firebase-admin/app";
-import { FieldValue, getFirestore, Timestamp } from "firebase-admin/firestore";
+import { FieldValue, getFirestore, Timestamp, type Transaction } from "firebase-admin/firestore";
 import { onRequest, type Request } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import {
+  type AccessScopeType,
   COLLECTIONS,
   DEVICE_FLOW_EXPIRES_IN_SECONDS,
   DEVICE_FLOW_POLL_INTERVAL_SECONDS,
@@ -30,6 +33,7 @@ import { forwardToProvider, validateProviderApiKey } from "./providers.js";
 initializeApp();
 
 const db = getFirestore();
+const logging = new Logging();
 const region = "asia-northeast1";
 
 function nowTimestamp() {
@@ -56,6 +60,26 @@ function createGatewayToken() {
   return crypto.randomBytes(32).toString("base64url");
 }
 
+function tokyoDateKey(value: Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(value).replace(/-/g, "");
+}
+
+function recentTokyoDateKeys(days: number) {
+  const keys: string[] = [];
+  for (let offset = days - 1; offset >= 0; offset -= 1) {
+    const value = new Date();
+    value.setDate(value.getDate() - offset);
+    keys.push(tokyoDateKey(value));
+  }
+
+  return keys;
+}
+
 function sha256(value: string) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
@@ -73,7 +97,8 @@ function requiredDeviceFlowIssuanceFields(deviceFlow: StoredDeviceFlowDocument) 
     deviceFlow.actorUid === undefined ||
     deviceFlow.actorEmail === undefined ||
     deviceFlow.credentialId === undefined ||
-    deviceFlow.credentialOwnerUid === undefined
+    deviceFlow.credentialOwnerUid === undefined ||
+    deviceFlow.accessScopeType === undefined
   ) {
     throw new HttpError(500, "device_flow_missing_authorization_fields");
   }
@@ -83,6 +108,9 @@ function requiredDeviceFlowIssuanceFields(deviceFlow: StoredDeviceFlowDocument) 
     actorEmail: deviceFlow.actorEmail,
     credentialId: deviceFlow.credentialId,
     credentialOwnerUid: deviceFlow.credentialOwnerUid,
+    accessScopeType: deviceFlow.accessScopeType,
+    accessScopeValue: deviceFlow.accessScopeValue,
+    grantId: deviceFlow.grantId,
   };
 }
 
@@ -113,6 +141,13 @@ function normalizeGrantValue(granteeType: GrantGranteeType, granteeValue: string
 
 function grantIdFor(credentialId: string, granteeType: GrantGranteeType, granteeValue: string) {
   return sha256(`${credentialId}:${granteeType}:${granteeValue}`);
+}
+
+function emptyUsageSummary7d() {
+  return recentTokyoDateKeys(7).map((dateKey) => ({
+    dateKey,
+    requestCount: 0,
+  }));
 }
 
 async function withHttpErrors(
@@ -186,19 +221,38 @@ async function requireOwnedCredential(credentialId: string, ownerUid: string) {
   return { ref, data };
 }
 
-function canUserUseCredential(
+function resolveAccessScope(
+  credentialId: string,
   credential: StoredCredentialDocument,
   actor: { uid: string; email: string; domain: string },
 ) {
   if (credential.status !== "active") {
-    return false;
+    throw new HttpError(403, "credential_not_allowed");
   }
 
-  return (
-    credential.ownerUid === actor.uid ||
-    credential.allowedUserEmails.includes(actor.email) ||
-    credential.allowedDomains.includes(actor.domain)
-  );
+  if (credential.ownerUid === actor.uid) {
+    return {
+      accessScopeType: "owner" as const,
+    };
+  }
+
+  if (credential.allowedUserEmails.includes(actor.email)) {
+    return {
+      accessScopeType: "user_email" as const,
+      accessScopeValue: actor.email,
+      grantId: grantIdFor(credentialId, "user_email", actor.email),
+    };
+  }
+
+  if (credential.allowedDomains.includes(actor.domain)) {
+    return {
+      accessScopeType: "email_domain" as const,
+      accessScopeValue: actor.domain,
+      grantId: grantIdFor(credentialId, "email_domain", actor.domain),
+    };
+  }
+
+  throw new HttpError(403, "credential_not_allowed");
 }
 
 async function loadGatewayTokenIssuance(request: Request) {
@@ -239,6 +293,128 @@ async function loadCredentialForIssuance(issuance: StoredTokenIssuanceDocument) 
     credential: credentialSnapshot.data() as StoredCredentialDocument,
     secret: secretSnapshot.data() as StoredCredentialSecretDocument,
   };
+}
+
+async function recordGrantLastAccess(issuance: StoredTokenIssuanceDocument) {
+  if (issuance.grantId === undefined) {
+    return;
+  }
+
+  await db.collection(COLLECTIONS.grants).doc(issuance.grantId).update({
+    lastAccessAt: nowTimestamp(),
+  });
+}
+
+type AuditUsageEvent = {
+  grantId: string;
+  timestamp: Date;
+};
+
+function auditUsageEventFromEntry(entry: any): AuditUsageEvent | null {
+  const payload = entry.metadata?.jsonPayload;
+  if (payload?.audit !== true) {
+    return null;
+  }
+
+  if (payload.result !== "success") {
+    return null;
+  }
+
+  if (payload.eventType !== "chat_completions_requested" && payload.eventType !== "responses_requested") {
+    return null;
+  }
+
+  if (typeof payload.grantId !== "string" || payload.grantId.length === 0) {
+    return null;
+  }
+
+  const rawTimestamp = entry.metadata?.timestamp ?? payload.timestamp;
+  if (typeof rawTimestamp !== "string") {
+    return null;
+  }
+
+  return {
+    grantId: payload.grantId,
+    timestamp: new Date(rawTimestamp),
+  };
+}
+
+function sevenDayUsageSummary(events: AuditUsageEvent[]) {
+  const dateKeys = recentTokyoDateKeys(7);
+  const counts = new Map<string, number>();
+  for (const event of events) {
+    const dateKey = tokyoDateKey(event.timestamp);
+    counts.set(dateKey, (counts.get(dateKey) ?? 0) + 1);
+  }
+
+  return dateKeys.map((dateKey) => ({
+    dateKey,
+    requestCount: counts.get(dateKey) ?? 0,
+  }));
+}
+
+async function updateGrantUsageSummaryBatch(
+  refs: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>[],
+  updatedAt: Timestamp,
+  eventsByGrant: Map<string, AuditUsageEvent[]>,
+) {
+  if (refs.length === 0) {
+    return;
+  }
+
+  const batch = db.batch();
+  for (const ref of refs) {
+    batch.update(ref, {
+      usageSummary7d: sevenDayUsageSummary(eventsByGrant.get(ref.id) ?? []),
+      usageUpdatedAt: updatedAt,
+    });
+  }
+
+  await batch.commit();
+}
+
+async function rebuildGrantUsageSummaryCache() {
+  const since = new Date();
+  since.setDate(since.getDate() - 6);
+  since.setHours(0, 0, 0, 0);
+
+  const filter = [
+    `timestamp >= "${since.toISOString()}"`,
+    "jsonPayload.audit = true",
+    'jsonPayload.result = "success"',
+    '(jsonPayload.eventType = "chat_completions_requested" OR jsonPayload.eventType = "responses_requested")',
+  ].join(" AND ");
+
+  const [entries] = await logging.getEntries({
+    filter,
+    pageSize: 1000,
+    orderBy: "timestamp desc",
+  });
+
+  const eventsByGrant = new Map<string, AuditUsageEvent[]>();
+  for (const entry of entries) {
+    const event = auditUsageEventFromEntry(entry);
+    if (event === null) {
+      continue;
+    }
+
+    const existing = eventsByGrant.get(event.grantId) ?? [];
+    existing.push(event);
+    eventsByGrant.set(event.grantId, existing);
+  }
+
+  const grantsSnapshot = await db.collection(COLLECTIONS.grants).get();
+  const updatedAt = nowTimestamp();
+  let refs: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>[] = [];
+  for (const snapshot of grantsSnapshot.docs) {
+    refs.push(snapshot.ref);
+    if (refs.length === 400) {
+      await updateGrantUsageSummaryBatch(refs, updatedAt, eventsByGrant);
+      refs = [];
+    }
+  }
+
+  await updateGrantUsageSummaryBatch(refs, updatedAt, eventsByGrant);
 }
 
 async function proxyUpstreamResponse(upstream: Response, response: JsonResponse & {
@@ -339,6 +515,9 @@ async function handlePollDeviceFlow(response: JsonResponse, deviceCode: string) 
       actorEmail: issuanceFields.actorEmail,
       credentialId: issuanceFields.credentialId,
       credentialOwnerUid: issuanceFields.credentialOwnerUid,
+      accessScopeType: issuanceFields.accessScopeType,
+      accessScopeValue: issuanceFields.accessScopeValue,
+      grantId: issuanceFields.grantId,
       tokenHash,
       issuedAt,
       expiresAt,
@@ -355,6 +534,9 @@ async function handlePollDeviceFlow(response: JsonResponse, deviceCode: string) 
     actorEmail: issuanceFields.actorEmail,
     credentialId: issuanceFields.credentialId,
     credentialOwnerUid: issuanceFields.credentialOwnerUid,
+    accessScopeType: issuanceFields.accessScopeType,
+    accessScopeValue: issuanceFields.accessScopeValue,
+    grantId: issuanceFields.grantId,
     eventType: "device_flow_completed",
     result: "success",
   });
@@ -479,6 +661,7 @@ async function handleCreateGrant(request: Request, response: JsonResponse, crede
       granteeType: body.granteeType,
       granteeValue: normalizedGranteeValue,
       createdAt: now,
+      usageSummary7d: emptyUsageSummary7d(),
     } satisfies StoredGrantDocument);
     transaction.update(credentialRef, credentialUpdate);
   });
@@ -574,9 +757,7 @@ async function handleAuthorizeDeviceFlow(request: Request, response: JsonRespons
   }
 
   const credential = credentialSnapshot.data() as StoredCredentialDocument;
-  if (!canUserUseCredential(credential, actor)) {
-    throw new HttpError(403, "credential_not_allowed");
-  }
+  const accessScope = resolveAccessScope(credentialId, credential, actor);
 
   const authorizedAt = nowTimestamp();
   await deviceFlowRef.update({
@@ -585,6 +766,9 @@ async function handleAuthorizeDeviceFlow(request: Request, response: JsonRespons
     credentialOwnerUid: credential.ownerUid,
     actorUid: actor.uid,
     actorEmail: actor.email,
+    accessScopeType: accessScope.accessScopeType,
+    accessScopeValue: accessScope.accessScopeValue,
+    grantId: accessScope.grantId,
     authorizedAt,
   });
 
@@ -593,6 +777,9 @@ async function handleAuthorizeDeviceFlow(request: Request, response: JsonRespons
     actorEmail: actor.email,
     credentialId,
     credentialOwnerUid: credential.ownerUid,
+    accessScopeType: accessScope.accessScopeType,
+    accessScopeValue: accessScope.accessScopeValue,
+    grantId: accessScope.grantId,
     eventType: "device_flow_authorized",
     result: "success",
   });
@@ -623,14 +810,21 @@ async function handleChatCompletions(
     body: request.rawBody,
     contentType: request.header("content-type") ?? "application/json",
   });
+  if (upstream.ok) {
+    await recordGrantLastAccess(issuance);
+  }
 
   writeAuditLog({
     actorUid: issuance.actorUid,
     actorEmail: issuance.actorEmail,
     credentialId: issuance.credentialId,
     credentialOwnerUid: issuance.credentialOwnerUid,
+    accessScopeType: issuance.accessScopeType,
+    accessScopeValue: issuance.accessScopeValue,
+    grantId: issuance.grantId,
     eventType: "chat_completions_requested",
-    result: "success",
+    result: upstream.ok ? "success" : "failure",
+    upstreamStatus: upstream.status,
   });
 
   await proxyUpstreamResponse(upstream, response);
@@ -655,14 +849,21 @@ async function handleResponses(
     body: request.rawBody,
     contentType: request.header("content-type") ?? "application/json",
   });
+  if (upstream.ok) {
+    await recordGrantLastAccess(issuance);
+  }
 
   writeAuditLog({
     actorUid: issuance.actorUid,
     actorEmail: issuance.actorEmail,
     credentialId: issuance.credentialId,
     credentialOwnerUid: issuance.credentialOwnerUid,
+    accessScopeType: issuance.accessScopeType,
+    accessScopeValue: issuance.accessScopeValue,
+    grantId: issuance.grantId,
     eventType: "responses_requested",
-    result: "success",
+    result: upstream.ok ? "success" : "failure",
+    upstreamStatus: upstream.status,
   });
 
   await proxyUpstreamResponse(upstream, response);
@@ -732,3 +933,14 @@ export const gatewayApi = onRequest({ cors: true, region }, async (request, resp
     throw new HttpError(404, "route_not_found");
   });
 });
+
+export const refreshGrantUsageSummaries = onSchedule(
+  {
+    schedule: "every 15 minutes",
+    region,
+    timeZone: "Asia/Tokyo",
+  },
+  async () => {
+    await rebuildGrantUsageSummaryCache();
+  },
+);

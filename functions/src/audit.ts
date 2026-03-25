@@ -12,8 +12,8 @@ type AuditPayload = {
 
 export function writeAuditLog(payload: AuditPayload) {
   logger.info("audit", {
+    audit: true,
     ...payload,
     timestamp: new Date().toISOString(),
   });
 }
-

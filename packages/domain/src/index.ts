@@ -15,6 +15,12 @@ export type CredentialProvider = "openai" | "anthropic";
 export type ResourceStatus = "active" | "disabled";
 export type GrantGranteeType = "user_email" | "email_domain";
 export type DeviceFlowStatus = "pending" | "authorized" | "completed" | "expired";
+export type AccessScopeType = "owner" | "user_email" | "email_domain";
+
+export type GrantUsagePoint = {
+  dateKey: string;
+  requestCount: number;
+};
 
 export type UserDocument = {
   email: string;
@@ -53,6 +59,9 @@ export type GrantDocument = {
   granteeType: GrantGranteeType;
   granteeValue: string;
   createdAt: Date;
+  lastAccessAt?: Date;
+  usageSummary7d: GrantUsagePoint[];
+  usageUpdatedAt?: Date;
 };
 
 export type TokenIssuanceDocument = {
@@ -60,6 +69,9 @@ export type TokenIssuanceDocument = {
   actorEmail: string;
   credentialId: string;
   credentialOwnerUid: string;
+  accessScopeType: AccessScopeType;
+  accessScopeValue?: string;
+  grantId?: string;
   tokenHash: string;
   issuedAt: Date;
   expiresAt: Date;
@@ -73,6 +85,9 @@ export type DeviceFlowDocument = {
   credentialOwnerUid?: string;
   actorUid?: string;
   actorEmail?: string;
+  accessScopeType?: AccessScopeType;
+  accessScopeValue?: string;
+  grantId?: string;
   tokenHash?: string;
   createdAt: Date;
   expiresAt: Date;
