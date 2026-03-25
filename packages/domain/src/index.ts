@@ -13,6 +13,7 @@ export const GATEWAY_TOKEN_EXPIRES_IN_SECONDS = 3600;
 
 export type CredentialProvider = "openai" | "anthropic";
 export type ResourceStatus = "active" | "disabled";
+export type GrantStatus = "active" | "revoked";
 export type GrantGranteeType = "user_email" | "email_domain";
 export type DeviceFlowStatus = "pending" | "authorized" | "completed" | "expired";
 export type AccessScopeType = "owner" | "user_email" | "email_domain";
@@ -58,7 +59,10 @@ export type GrantDocument = {
   ownerUid: string;
   granteeType: GrantGranteeType;
   granteeValue: string;
+  status: GrantStatus;
   createdAt: Date;
+  updatedAt: Date;
+  revokedAt?: Date;
   lastAccessAt?: Date;
   usageSummary7d: GrantUsagePoint[];
   usageUpdatedAt?: Date;

@@ -19,8 +19,10 @@ export type StoredCredentialSecretDocument = Omit<CredentialSecretDocument, "cre
   updatedAt: Timestamp;
 };
 
-export type StoredGrantDocument = Omit<GrantDocument, "createdAt" | "lastAccessAt" | "usageUpdatedAt"> & {
+export type StoredGrantDocument = Omit<GrantDocument, "createdAt" | "updatedAt" | "revokedAt" | "lastAccessAt" | "usageUpdatedAt"> & {
   createdAt: Timestamp;
+  updatedAt: Timestamp;
+  revokedAt?: Timestamp;
   lastAccessAt?: Timestamp;
   usageUpdatedAt?: Timestamp;
   usageSummary7d: GrantUsagePoint[];

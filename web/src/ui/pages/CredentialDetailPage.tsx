@@ -19,12 +19,13 @@ import Typography from "@mui/material/Typography";
 import { useMemo, useState } from "react";
 import { useIntl } from "react-intl";
 import { Link as RouterLink, useParams } from "react-router-dom";
-import { disableCredential, revokeGrant } from "../../api/management";
+import { createGrant, disableCredential, revokeGrant } from "../../api/management";
 import { useAuth } from "../../auth/AuthProvider";
 import { useCredential } from "../../credentials/useCredential";
 import { useOwnedGrants } from "../../grants/useOwnedGrants";
 import { FormNotice } from "../components/FormNotice";
 import { Sparkline } from "../components/Sparkline";
+import { grantStatusLabel } from "../grantStatusLabel";
 import { granteeTypeLabel } from "../granteeTypeLabel";
 import { providerLabel } from "../providerLabel";
 import { statusLabel } from "../statusLabel";
@@ -78,7 +79,13 @@ export function CredentialDetailPage() {
         grant,
         totalCount: grant.usageSummary7d.reduce((sum, point) => sum + point.requestCount, 0),
         sparklineValues: grant.usageSummary7d.map((point) => point.requestCount),
-      })),
+      })).sort((left, right) => {
+        if (left.grant.status !== right.grant.status) {
+          return left.grant.status === "active" ? -1 : 1;
+        }
+
+        return right.grant.updatedAt.getTime() - left.grant.updatedAt.getTime();
+      }),
     [grants],
   );
 
@@ -101,6 +108,23 @@ export function CredentialDetailPage() {
 
     try {
       await revokeGrant(grantId);
+    } catch (caught: unknown) {
+      setActionError((caught as Error).message);
+    }
+  }
+
+  async function handleReactivate(grant: (typeof grants)[number]) {
+    if (credentialId === undefined) {
+      return;
+    }
+
+    setActionError(null);
+
+    try {
+      await createGrant(credentialId, {
+        granteeType: grant.granteeType,
+        granteeValue: grant.granteeValue,
+      });
     } catch (caught: unknown) {
       setActionError((caught as Error).message);
     }
@@ -182,10 +206,12 @@ export function CredentialDetailPage() {
                 <TableRow>
                   <TableCell>{intl.formatMessage({ id: "credentialDetail.table.type" })}</TableCell>
                   <TableCell>{intl.formatMessage({ id: "credentialDetail.table.target" })}</TableCell>
+                  <TableCell>{intl.formatMessage({ id: "credentialDetail.table.status" })}</TableCell>
                   <TableCell>{intl.formatMessage({ id: "credentialDetail.table.last7d" })}</TableCell>
                   <TableCell align="right">{intl.formatMessage({ id: "credentialDetail.table.count" })}</TableCell>
                   <TableCell>{intl.formatMessage({ id: "credentialDetail.table.lastAccess" })}</TableCell>
                   <TableCell>{intl.formatMessage({ id: "credentialDetail.table.createdAt" })}</TableCell>
+                  <TableCell>{intl.formatMessage({ id: "credentialDetail.table.updatedAt" })}</TableCell>
                   <TableCell align="right">{intl.formatMessage({ id: "credentialDetail.table.action" })}</TableCell>
                 </TableRow>
               </TableHead>
@@ -195,15 +221,29 @@ export function CredentialDetailPage() {
                     <TableCell>{granteeTypeLabel(intl, grant.granteeType)}</TableCell>
                     <TableCell>{grant.granteeValue}</TableCell>
                     <TableCell>
+                      <Chip
+                        color={grant.status === "active" ? "success" : "default"}
+                        label={grantStatusLabel(intl, grant.status)}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
                       {grant.usageSummary7d.length > 0 ? <Sparkline values={sparklineValues} /> : intl.formatMessage({ id: "common.none" })}
                     </TableCell>
                     <TableCell align="right">{totalCount}</TableCell>
                     <TableCell>{formatRelativeTime(intl, grant.lastAccessAt)}</TableCell>
                     <TableCell>{formatDate(intl, grant.createdAt)}</TableCell>
+                    <TableCell>{formatDate(intl, grant.updatedAt)}</TableCell>
                     <TableCell align="right">
-                      <Button color="inherit" onClick={() => void handleRevoke(grant.id)} size="small" type="button">
-                        {intl.formatMessage({ id: "credentialDetail.revoke" })}
-                      </Button>
+                      {grant.status === "active" ? (
+                        <Button color="inherit" onClick={() => void handleRevoke(grant.id)} size="small" type="button">
+                          {intl.formatMessage({ id: "credentialDetail.revoke" })}
+                        </Button>
+                      ) : (
+                        <Button color="inherit" onClick={() => void handleReactivate(grant)} size="small" type="button">
+                          {intl.formatMessage({ id: "credentialDetail.reactivate" })}
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

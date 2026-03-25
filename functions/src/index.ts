@@ -17,6 +17,7 @@ import {
   type DeviceFlowPollResponse,
   type DeviceFlowStartResponse,
   type GrantGranteeType,
+  type GrantStatus,
 } from "./domain.js";
 import { requireAuthenticatedUser, readGatewayBearerToken } from "./auth.js";
 import { writeAuditLog } from "./audit.js";
@@ -149,6 +150,10 @@ function emptyUsageSummary7d() {
     dateKey,
     requestCount: 0,
   }));
+}
+
+function grantStatus(grant: Partial<StoredGrantDocument>): GrantStatus {
+  return grant.status === "revoked" ? "revoked" : "active";
 }
 
 async function withHttpErrors(
@@ -703,8 +708,19 @@ async function handleCreateGrant(request: Request, response: JsonResponse, crede
   const { ref: credentialRef } = await requireOwnedCredential(credentialId, actor.uid);
   const grantRef = db.collection(COLLECTIONS.grants).doc(grantId);
   const now = nowTimestamp();
+  let outcome: "created" | "reactivated" = "created";
 
   await db.runTransaction(async (transaction) => {
+    const grantSnapshot = await transaction.get(grantRef);
+    if (grantSnapshot.exists) {
+      const existingGrant = grantSnapshot.data() as StoredGrantDocument;
+      if (grantStatus(existingGrant) === "active") {
+        throw new HttpError(409, "grant_already_exists");
+      }
+
+      outcome = "reactivated";
+    }
+
     const credentialUpdate: Record<string, unknown> = {
       updatedAt: now,
     };
@@ -714,14 +730,25 @@ async function handleCreateGrant(request: Request, response: JsonResponse, crede
       credentialUpdate.allowedDomains = FieldValue.arrayUnion(normalizedGranteeValue);
     }
 
-    transaction.set(grantRef, {
-      credentialId,
-      ownerUid: actor.uid,
-      granteeType: body.granteeType,
-      granteeValue: normalizedGranteeValue,
-      createdAt: now,
-      usageSummary7d: emptyUsageSummary7d(),
-    } satisfies StoredGrantDocument);
+    if (outcome === "created") {
+      transaction.create(grantRef, {
+        credentialId,
+        ownerUid: actor.uid,
+        granteeType: body.granteeType,
+        granteeValue: normalizedGranteeValue,
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+        usageSummary7d: emptyUsageSummary7d(),
+      } satisfies StoredGrantDocument);
+    } else {
+      transaction.update(grantRef, {
+        status: "active",
+        updatedAt: now,
+        revokedAt: FieldValue.delete(),
+      });
+    }
+
     transaction.update(credentialRef, credentialUpdate);
   });
 
@@ -730,15 +757,16 @@ async function handleCreateGrant(request: Request, response: JsonResponse, crede
     actorEmail: actor.email,
     credentialId,
     credentialOwnerUid: actor.uid,
-    eventType: "grant_created",
+    eventType: outcome === "created" ? "grant_created" : "grant_reactivated",
     result: "success",
   });
 
-  response.status(201).json({
+  response.status(outcome === "created" ? 201 : 200).json({
     grantId,
     credentialId,
     granteeType: body.granteeType,
     granteeValue: normalizedGranteeValue,
+    status: "active",
   });
 }
 
@@ -755,10 +783,15 @@ async function handleRevokeGrant(request: Request, response: JsonResponse, grant
     throw new HttpError(403, "grant_owner_required");
   }
 
+  if (grantStatus(grant) === "revoked") {
+    throw new HttpError(409, "grant_already_revoked");
+  }
+
   const credentialRef = db.collection(COLLECTIONS.credentials).doc(grant.credentialId);
+  const revokedAt = nowTimestamp();
   await db.runTransaction(async (transaction) => {
     const credentialUpdate: Record<string, unknown> = {
-      updatedAt: nowTimestamp(),
+      updatedAt: revokedAt,
     };
     if (grant.granteeType === "user_email") {
       credentialUpdate.allowedUserEmails = FieldValue.arrayRemove(grant.granteeValue);
@@ -766,7 +799,11 @@ async function handleRevokeGrant(request: Request, response: JsonResponse, grant
       credentialUpdate.allowedDomains = FieldValue.arrayRemove(grant.granteeValue);
     }
 
-    transaction.delete(grantRef);
+    transaction.update(grantRef, {
+      status: "revoked",
+      updatedAt: revokedAt,
+      revokedAt,
+    });
     transaction.update(credentialRef, credentialUpdate);
   });
 

@@ -85,7 +85,10 @@
 ### `grants/{grantId}`
 
 - 用途: credential の委譲状態
-- 主なフィールド: `credentialId`, `ownerUid`, `granteeType`, `granteeValue`, `createdAt`
+- 主なフィールド:
+  - 識別: `credentialId`, `ownerUid`, `granteeType`, `granteeValue`
+  - 状態: `status`, `createdAt`, `updatedAt`, `revokedAt`
+  - 利用集計: `lastAccessAt`, `usageSummary7d`, `usageUpdatedAt`
 - クライアント read: owner のみ可
 - クライアント write: 不可
 - サーバ write: 可
@@ -109,14 +112,69 @@
 ## Firestore 設計上の要点
 
 - `credentials` と `credential_secrets` は分ける。UI が参照する可能性があるのは `credentials` だけで、`credential_secrets` は常にサーバ専用にする
-- `grants` は委譲の正規データとして持つ
+- `grants` は委譲の正規データかつ usage 集計の保持先として持つ
 - `credentials.allowedUserEmails` と `credentials.allowedDomains` は、UI の直接クエリと Security Rules を単純に保つための派生データとして持つ
 - grant の作成と取り消しは API が行い、そのたびに `grants` と `credentials.allowed*` を一緒に更新する
+- grant の取り消しは物理削除ではなく論理状態遷移として扱い、usage と監査の参照に必要なレコードは保持する
+- `credentials.allowed*` は active な grant だけを反映する派生データであり、revoked grant は含めない
+- grant の identity は `(credentialId, granteeType, granteeValue)` で一意に定まる。`grantId` はこの組に対して安定して決まるものとして扱う
+- 同じ共有先に再度共有する場合は新しい grant を増やさず、既存 grant を `revoked -> active` に戻す
+- 再共有時も `createdAt` は維持し、最新の状態変更時刻は `updatedAt` に、owner が共有を止めた時刻は `revokedAt` に保持する
+- `lastAccessAt` と `usageSummary7d` は grant の利用実績を示す。共有の停止後も履歴として保持し、実際の利用有無の確認はこれらと監査ログで行う
 - device flow の状態は `device_flows/{userCode}` に持ち、browser 側は `userCode` で認可対象を特定する
 - `deviceCode` は `device_flows` のフィールドとして保持し、client 側の polling で照合する
 - `userCode` は、人間が認可対象の device flow を特定し、誤認可を避けるための確認コードとして使う
 - audit log の本流は Firestore ではなく Cloud Logging に出す
 - 監査ログには少なくとも `actorUid`, `actorEmail`, `credentialId`, `credentialOwnerUid`, `eventType`, `result`, `timestamp` を含める
+
+## Grant の状態モデル
+
+### grant の意味
+
+- grant は「ある credential を、ある共有先に使わせる関係」そのものを表す
+- 共有を止めても grant の履歴と利用実績は残す
+- 共有を再開しても同じ関係の再有効化として扱い、別 grant は作らない
+
+### grant の状態
+
+- `active`
+  - 現在有効な共有
+  - `credentials.allowedUserEmails` または `credentials.allowedDomains` に反映される
+  - device flow の認可対象になり得る
+- `revoked`
+  - owner が将来の利用を止めた共有
+  - `credentials.allowed*` には反映されない
+  - device flow の認可対象にはならない
+  - usage 集計と監査参照のため grant record 自体は保持する
+
+### grant のタイムスタンプ
+
+- `createdAt`
+  - その共有関係が最初に作られた時刻
+  - 再共有しても更新しない
+- `updatedAt`
+  - grant の状態や集計以外の管理情報が最後に変わった時刻
+  - revoke / 再共有では更新する
+- `revokedAt`
+  - owner が共有を止めた時刻
+  - `status = revoked` のときにのみ意味を持つ
+  - 再共有時は unset / null 相当に戻す
+- `lastAccessAt`
+  - その grant 経由で最後に利用が成功した時刻
+  - 共有停止後も履歴として残す
+
+### grant の再共有
+
+- 同じ `credentialId`, `granteeType`, `granteeValue` への再共有は、既存 grant の再有効化として扱う
+- 再共有時に新しい grant record や新しい grantId は作らない
+- 再共有時は `status = active`, `updatedAt` 更新, `revokedAt` 解除を行う
+- `createdAt`, `lastAccessAt`, `usageSummary7d` は保持する
+
+### grant と利用実績
+
+- grant の利用実績は `lastAccessAt`, `usageSummary7d`, `usageUpdatedAt` に集約する
+- grant を物理削除すると共有関係に紐づく統計が失われるため、revoke では削除しない
+- 実際に使われていたか、いつ止められたかは grant record と監査ログを併せて判断する
 
 ## Security Rules の方針
 
@@ -180,8 +238,14 @@
 
 #### 5. Credential 詳細画面
 
-- 目的: credential の詳細と委譲状態を確認する
-- 主な要素: credential 情報、既存 grant 一覧、`委譲追加`、`取り消し`、`無効化`
+- 目的: credential の詳細、共有状態、共有履歴、grant ごとの利用状況を確認し、共有の停止や再共有を管理する
+- 主な要素:
+  - credential 情報
+  - 状態付き grant 一覧
+  - grant ごとの usage 情報
+  - `委譲追加`
+  - grant の状態に応じた `取り消し` または `再共有`
+  - `無効化`
 - 遷移先: Grant 作成画面
 
 #### 6. Grant 作成画面
@@ -230,6 +294,8 @@
 - 利用開始は device flow で完結させる
 - 一覧取得は可能な限り Firestore 直読みを前提にする
 - 状態変更は監査のため API 経由に寄せる
+- Credential 詳細画面の grant 一覧は active / revoked の両方を表示対象とし、現在の共有状態と過去の共有履歴を同じ資源として扱う
+- grant 一覧には少なくとも共有先、状態、利用状況、主要な時刻情報を表示し、取り消し後も usage と監査上の参照を失わない
 
 ## 外部インターフェース設計
 
@@ -348,8 +414,10 @@
   - `granteeValue`
 - 主な処理:
   - owner であることを確認する
-  - `grants/{grantId}` を作成する
-  - `credentials.allowedUserEmails` または `credentials.allowedDomains` を更新する
+  - `(credentialId, granteeType, granteeValue)` に対応する `grantId` を解決する
+  - 既存 grant がなければ `grants/{grantId}` を作成する
+  - 既存 grant が `revoked` なら `active` に戻す
+  - `credentials.allowedUserEmails` または `credentials.allowedDomains` に対象を反映する
   - 監査イベントを出す
 - レスポンス:
   - `grantId`
@@ -363,8 +431,10 @@
 - 認証: 必須
 - 主な処理:
   - owner であることを確認する
-  - `grants/{grantId}` を削除する
-  - `credentials.allowedUserEmails` または `credentials.allowedDomains` を更新する
+  - `grants/{grantId}` を `revoked` に更新する
+  - `updatedAt` と `revokedAt` を記録する
+  - `credentials.allowedUserEmails` または `credentials.allowedDomains` から対象を外す
+  - grant 自体の usage 集計と監査参照に必要な情報は保持する
   - 監査イベントを出す
 - レスポンス:
   - `grantId`
