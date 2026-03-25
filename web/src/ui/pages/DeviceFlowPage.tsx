@@ -1,4 +1,5 @@
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import GoogleIcon from "@mui/icons-material/Google";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import Alert from "@mui/material/Alert";
@@ -10,16 +11,18 @@ import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Radio from "@mui/material/Radio";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { useRef, type ChangeEvent, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
+import { useRef, type ChangeEvent, type ClipboardEvent, type FormEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { useMemo, useState } from "react";
 import { useIntl } from "react-intl";
-import { Link as RouterLink, useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useSearchParams } from "react-router-dom";
 import { authorizeDeviceFlow } from "../../api/management";
 import { useAuth } from "../../auth/AuthProvider";
 import { useAvailableCredentials } from "../../credentials/useAvailableCredentials";
@@ -40,18 +43,21 @@ export function DeviceFlowPage() {
   const { ready, user } = useAuth();
   const navigate = useNavigate();
   const intl = useIntl();
+  const [searchParams] = useSearchParams();
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [userCodeCharacters, setUserCodeCharacters] = useState<string[]>(["", "", "", "", "", "", "", ""]);
   const [step, setStep] = useState<"userCode" | "credential">("userCode");
   const [selectedCredentialId, setSelectedCredentialId] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [accountMenuAnchor, setAccountMenuAnchor] = useState<HTMLElement | null>(null);
   const { credentials, loading, error: loadError } = useAvailableCredentials(user?.uid ?? null, user?.email ?? null);
   const userCode = useMemo(
     () => `${userCodeCharacters.slice(0, 4).join("")}-${userCodeCharacters.slice(4).join("")}`,
     [userCodeCharacters],
   );
   const isUserCodeReady = userCodeCharacters.every((character) => character.length === 1);
+  const clientName = searchParams.get("client_name")?.trim() || null;
 
   function handleCharacterChange(index: number, event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     const nextCharacter = normalizeCodeCharacter(event.target.value).slice(0, 1);
@@ -129,11 +135,18 @@ export function DeviceFlowPage() {
 
     navigate("/device/complete", {
       state: {
-        credentialLabel: selected.label,
         userCode,
       },
     });
     setSubmitting(false);
+  }
+
+  function handleAccountMenuOpen(event: MouseEvent<HTMLElement>) {
+    setAccountMenuAnchor(event.currentTarget);
+  }
+
+  function handleAccountMenuClose() {
+    setAccountMenuAnchor(null);
   }
 
   if (!ready) {
@@ -151,7 +164,12 @@ export function DeviceFlowPage() {
       <Paper sx={{ p: 4 }} variant="outlined">
         <Stack spacing={3}>
           <Typography variant="h5">{intl.formatMessage({ id: "deviceFlow.signInTitle" })}</Typography>
-          <Typography color="text.secondary">{intl.formatMessage({ id: "deviceFlow.signInPrompt" })}</Typography>
+          <Typography color="text.secondary">{intl.formatMessage({ id: "common.serviceDescription" })}</Typography>
+          <Typography color="text.secondary">
+            {clientName === null
+              ? intl.formatMessage({ id: "deviceFlow.signInPrompt" })
+              : intl.formatMessage({ id: "deviceFlow.signInPromptWithClientName" }, { clientName })}
+          </Typography>
           <Button
             startIcon={<GoogleIcon />}
             onClick={() => {
@@ -172,6 +190,23 @@ export function DeviceFlowPage() {
   return (
     <Paper component="form" onSubmit={handleSubmit} sx={{ p: 4 }} variant="outlined">
       <Stack spacing={3}>
+        {user !== null ? (
+          <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+            <Button
+              color="inherit"
+              onClick={handleAccountMenuOpen}
+              startIcon={<AccountCircleIcon />}
+              sx={{ maxWidth: "100%", textTransform: "none" }}
+            >
+              {user.email}
+            </Button>
+            <Menu anchorEl={accountMenuAnchor} onClose={handleAccountMenuClose} open={accountMenuAnchor !== null}>
+              <MenuItem component={RouterLink} onClick={handleAccountMenuClose} to="/logout">
+                {intl.formatMessage({ id: "nav.signOut" })}
+              </MenuItem>
+            </Menu>
+          </Box>
+        ) : null}
         {step === "userCode" ? (
           <>
             <Typography variant="h5">{intl.formatMessage({ id: "deviceFlow.userCodeTitle" })}</Typography>

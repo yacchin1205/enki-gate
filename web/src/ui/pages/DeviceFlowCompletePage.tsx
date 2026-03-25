@@ -1,5 +1,4 @@
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -10,7 +9,6 @@ import { Navigate, useLocation } from "react-router-dom";
 import { getDeviceFlowStatus } from "../../api/management";
 
 type DeviceFlowCompleteState = {
-  credentialLabel?: string;
   userCode?: string;
 };
 
@@ -67,15 +65,6 @@ export function DeviceFlowCompletePage() {
               : intl.formatMessage({ id: "deviceFlowComplete.waiting" })}
           </Typography>
         </Stack>
-        {state?.userCode ? (
-          <Stack direction="row" spacing={1}>
-            <Chip
-              label={intl.formatMessage({ id: "deviceFlow.userCodeChip" }, { userCode: state.userCode })}
-              variant="outlined"
-            />
-            {state.credentialLabel ? <Chip label={state.credentialLabel} variant="outlined" /> : null}
-          </Stack>
-        ) : null}
       </Stack>
     </Paper>
   );

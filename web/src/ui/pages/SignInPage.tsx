@@ -60,6 +60,8 @@ export function SignInPage() {
     <Paper sx={{ p: 4 }} variant="outlined">
       <Stack spacing={3}>
         <Typography variant="h5">{intl.formatMessage({ id: "signIn.title" })}</Typography>
+        <Typography color="text.secondary">{intl.formatMessage({ id: "common.serviceDescription" })}</Typography>
+        <Typography color="text.secondary">{intl.formatMessage({ id: "signIn.description" })}</Typography>
         {authError !== null ? <FormNotice message={authError} tone="error" /> : null}
         {error !== null ? <FormNotice message={error} tone="error" /> : null}
         <Button

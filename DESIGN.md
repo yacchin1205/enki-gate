@@ -316,6 +316,10 @@
   - 未認証ならサインイン画面へ進める
   - 認証済みなら device flow 認可画面を表示する
   - user code に対応する認可対象を人間が確認できるようにする
+- クエリパラメータ:
+  - `client_name` を任意で受け付ける
+  - `client_name` は画面上の説明文に表示するための補助情報であり、認可対象の識別やセキュリティ判断には使わない
+  - `user_code` はクエリパラメータで受け取らない。認可対象の特定は引き続き人間が入力する `user_code` によって行う
 
 ### Device Flow API
 
@@ -326,6 +330,10 @@
 - 主な処理:
   - `device_flows/{userCode}` を作成する
   - `device_code`, `user_code`, `verification_uri`, `expires_in` を返す
+- client application 実装メモ:
+  - browser に開かせる URL は `verification_uri` に `client_name` を付与したものにしてよい
+  - 例: `https://.../device?client_name=My%20Tool`
+  - `client_name` は表示用の文字列であり、device flow の認可や token 発行の根拠にはしない
 - 仕様:
   - `expires_in` は 600 秒
   - `interval` は 5 秒
