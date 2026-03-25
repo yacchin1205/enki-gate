@@ -1,0 +1,14 @@
+.next
+node_modules
+coverage
+dist
+.turbo
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+functions/lib
+functions/.env.*
+firebase-debug.log
+.firebase

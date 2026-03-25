@@ -1,0 +1,42 @@
+{
+  "functions": {
+    "source": "functions",
+    "predeploy": [
+      "npm run build:functions"
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "hosting": {
+    "public": "web/dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "predeploy": [
+      "npm run build:web"
+    ],
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "function": {
+          "functionId": "api",
+          "region": "asia-northeast1"
+        }
+      },
+      {
+        "source": "/v1/**",
+        "function": {
+          "functionId": "gatewayApi",
+          "region": "asia-northeast1"
+        }
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

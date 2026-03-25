@@ -1,0 +1,17 @@
+{
+  "name": "enki-gate",
+  "private": true,
+  "workspaces": [
+    "web",
+    "functions",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace web",
+    "build:domain": "npm run build --workspace @enki-gate/domain",
+    "build:web": "npm run build:domain && npm run build --workspace web",
+    "build:functions": "npm run build:domain && npm run build --workspace functions",
+    "build": "npm run build:web && npm run build:functions",
+    "device-flow-client": "node scripts/device-flow-client.mjs"
+  }
+}

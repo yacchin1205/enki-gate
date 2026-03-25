@@ -163,7 +163,7 @@
 #### 2. ホーム画面
 
 - 目的: Enki Gate の主要機能への入口をまとめる
-- 主な要素: Credential 管理、利用開始への導線
+- 主な要素: Credential 管理への導線
 - 遷移先: 各管理画面
 
 #### 3. Credential 一覧画面
@@ -251,20 +251,6 @@
   - 認証済みなら device flow 認可画面を表示する
   - user code に対応する認可対象を人間が確認できるようにする
 
-#### `POST /device`
-
-- 用途: ユーザーが user code と credential 選択により device flow を完了する
-- 認証: 必須
-- フォーム入力:
-  - `user_code`
-  - `credential_id`
-- 主な処理:
-  - `user_code` に対応する device flow を検証する
-  - actor がその credential を利用可能であることを確認する
-  - device flow を authorized 状態にする
-  - 監査イベントを出す
-  - 完了画面を表示する
-
 ### Device Flow API
 
 #### `POST /api/device-flows`
@@ -284,7 +270,7 @@
   - `expires_in`
   - `interval`
 
-#### `POST /api/device-flows/{deviceCode}:poll`
+#### `POST /api/device-flows/{deviceCode}/poll`
 
 - 用途: client application が device flow の完了を待つ
 - 認証: 不要
@@ -301,6 +287,23 @@
   - pending の間は token を返さない
   - expired の場合は失敗を返す
   - completed になった device flow では再発行しない
+
+#### `POST /api/device-authorizations`
+
+- 用途: ブラウザ上で認証済みユーザーが user code と credential 選択により device flow を完了する
+- 認証: 必須
+- リクエスト:
+  - `user_code`
+  - `credential_id`
+- 主な処理:
+  - `user_code` に対応する device flow を検証する
+  - actor がその credential を利用可能であることを確認する
+  - device flow を authorized 状態にする
+  - 監査イベントを出す
+- レスポンス:
+  - `userCode`
+  - `credentialId`
+  - `status`
 
 ### Credential 管理 API
 
@@ -323,7 +326,7 @@
   - `label`
   - `status`
 
-#### `POST /api/credentials/{credentialId}:disable`
+#### `POST /api/credentials/{credentialId}/disable`
 
 - 用途: credential を論理削除する
 - 認証: 必須
@@ -354,7 +357,7 @@
   - `granteeType`
   - `granteeValue`
 
-#### `POST /api/grants/{grantId}:revoke`
+#### `POST /api/grants/{grantId}/revoke`
 
 - 用途: 委譲済み grant を取り消す
 - 認証: 必須
@@ -388,6 +391,13 @@
 - 主な処理:
   - `POST /v1/chat/completions` と同様
 
+### Hosting と Functions のルーティング
+
+- `/api/**` は Management API と Device Flow API に渡す
+- `/v1/**` は OpenAI 互換 API に渡す
+- それ以外は Hosting の SPA として `index.html` を返す
+- 画面の `/device` と API の `/api/device-authorizations` は path を分ける
+
 ### Management API と Firestore 直読みの境界
 
 - Firestore 直読み:
@@ -397,10 +407,9 @@
 - Management API 経由:
   - credential 登録、無効化
   - grant 作成、取り消し
-- Browser Flow:
-  - device flow 完了
 - Device Flow API:
   - device flow 開始
+  - device flow 認可
   - polling と gateway token 発行
 - OpenAI 互換 API:
   - OpenAI 互換 API 呼び出し
