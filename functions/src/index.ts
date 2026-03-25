@@ -311,33 +311,40 @@ type AuditUsageEvent = {
   timestamp: Date;
 };
 
-function auditUsageEventFromEntry(entry: any): AuditUsageEvent | null {
+function auditUsageEventFromEntry(entry: any): AuditUsageEvent {
   const payload = entry.data;
-  if (payload?.audit !== true) {
-    return null;
+  if (typeof payload !== "object" || payload === null) {
+    throw new Error("refreshGrantUsageSummaries: payload missing from audit entry");
+  }
+
+  if (payload.audit !== true) {
+    throw new Error("refreshGrantUsageSummaries: audit flag missing from audit entry");
   }
 
   if (payload.result !== "success") {
-    return null;
+    throw new Error("refreshGrantUsageSummaries: result missing from audit entry");
   }
 
   if (payload.eventType !== "chat_completions_requested" && payload.eventType !== "responses_requested") {
-    return null;
+    throw new Error("refreshGrantUsageSummaries: eventType missing from audit entry");
   }
 
   if (typeof payload.grantId !== "string" || payload.grantId.length === 0) {
-    return null;
+    throw new Error("refreshGrantUsageSummaries: grantId missing from audit entry");
   }
 
-  const rawTimestamp =
-    typeof payload.timestamp === "string" ? payload.timestamp : entry.metadata?.timestamp;
-  if (typeof rawTimestamp !== "string") {
-    return null;
+  if (typeof payload.timestamp !== "string" || payload.timestamp.length === 0) {
+    throw new Error("refreshGrantUsageSummaries: timestamp missing from audit entry");
+  }
+
+  const timestamp = new Date(payload.timestamp);
+  if (Number.isNaN(timestamp.getTime())) {
+    throw new Error("refreshGrantUsageSummaries: timestamp invalid in audit entry");
   }
 
   return {
     grantId: payload.grantId,
-    timestamp: new Date(rawTimestamp),
+    timestamp,
   };
 }
 
@@ -398,30 +405,30 @@ async function rebuildGrantUsageSummaryCache() {
   });
 
   const eventsByGrant = new Map<string, AuditUsageEvent[]>();
-  for (const [index, entry] of entries.entries()) {
-    if (index < 5) {
-      const hasMetadata = typeof entry === "object" && entry !== null && "metadata" in entry;
-      const metadata = hasMetadata && typeof entry.metadata === "object" && entry.metadata !== null ? entry.metadata : null;
-      const metadataTimestamp = metadata && "timestamp" in metadata ? metadata.timestamp : null;
-      const metadataPayload = metadata && "payload" in metadata ? metadata.payload : null;
-      const metadataJsonPayload = metadata && "jsonPayload" in metadata ? metadata.jsonPayload : null;
-      logger.info("refreshGrantUsageSummaries: inspect entry shape", {
-        index,
-        data: entry.data,
-        metadataTimestamp,
-        metadataPayload,
-        metadataJsonPayload,
+  const parseWarnings: Array<{
+    message: string;
+    payload: unknown;
+  }> = [];
+  for (const entry of entries) {
+    let event: AuditUsageEvent;
+    try {
+      event = auditUsageEventFromEntry(entry);
+    } catch (caught) {
+      parseWarnings.push({
+        message: (caught as Error).message,
+        payload: entry.data,
       });
-    }
-
-    const event = auditUsageEventFromEntry(entry);
-    if (event === null) {
       continue;
     }
-
     const existing = eventsByGrant.get(event.grantId) ?? [];
     existing.push(event);
     eventsByGrant.set(event.grantId, existing);
+  }
+  if (parseWarnings.length > 0) {
+    logger.warn("refreshGrantUsageSummaries: skipped audit entries", {
+      skippedEntryCount: parseWarnings.length,
+      warnings: parseWarnings,
+    });
   }
   logger.info("refreshGrantUsageSummaries: grouped events by grant", {
     grantCount: eventsByGrant.size,
