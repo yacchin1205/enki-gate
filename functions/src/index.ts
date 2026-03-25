@@ -17,7 +17,6 @@ import {
   type DeviceFlowPollResponse,
   type DeviceFlowStartResponse,
   type GrantGranteeType,
-  type GrantStatus,
 } from "./domain.js";
 import { requireAuthenticatedUser, readGatewayBearerToken } from "./auth.js";
 import { writeAuditLog } from "./audit.js";
@@ -152,10 +151,6 @@ function emptyUsageSummary7d() {
   }));
 }
 
-function grantStatus(grant: Partial<StoredGrantDocument>): GrantStatus {
-  return grant.status === "revoked" ? "revoked" : "active";
-}
-
 async function withHttpErrors(
   response: JsonResponse,
   handler: () => Promise<void>,
@@ -282,9 +277,14 @@ async function loadGatewayTokenIssuance(request: Request) {
 }
 
 async function loadCredentialForIssuance(issuance: StoredTokenIssuanceDocument) {
-  const [credentialSnapshot, secretSnapshot] = await Promise.all([
+  const grantPromise =
+    issuance.grantId === undefined
+      ? Promise.resolve(undefined)
+      : db.collection(COLLECTIONS.grants).doc(issuance.grantId).get();
+  const [credentialSnapshot, secretSnapshot, grantSnapshot] = await Promise.all([
     db.collection(COLLECTIONS.credentials).doc(issuance.credentialId).get(),
     db.collection(COLLECTIONS.credentialSecrets).doc(issuance.credentialId).get(),
+    grantPromise,
   ]);
 
   if (!credentialSnapshot.exists) {
@@ -295,8 +295,60 @@ async function loadCredentialForIssuance(issuance: StoredTokenIssuanceDocument) 
     throw new HttpError(404, "credential_secret_not_found");
   }
 
+  const credential = credentialSnapshot.data() as StoredCredentialDocument;
+  if (credential.status !== "active") {
+    throw new HttpError(403, "credential_not_allowed");
+  }
+
+  if (credential.ownerUid !== issuance.credentialOwnerUid) {
+    throw new HttpError(401, "invalid_gateway_token");
+  }
+
+  if (issuance.accessScopeType === "owner") {
+    return {
+      credential,
+      secret: secretSnapshot.data() as StoredCredentialSecretDocument,
+    };
+  }
+
+  if (issuance.grantId === undefined || issuance.accessScopeValue === undefined) {
+    throw new HttpError(401, "invalid_gateway_token");
+  }
+
+  if (grantSnapshot === undefined || !grantSnapshot.exists) {
+    throw new HttpError(403, "credential_not_allowed");
+  }
+
+  const grant = grantSnapshot.data() as Partial<StoredGrantDocument>;
+  if (grant.status !== "active") {
+    throw new HttpError(403, "credential_not_allowed");
+  }
+  if (
+    typeof grant.credentialId !== "string" ||
+    typeof grant.ownerUid !== "string" ||
+    typeof grant.granteeType !== "string" ||
+    typeof grant.granteeValue !== "string"
+  ) {
+    throw new Error("grant is missing required fields");
+  }
+
+  if (grant.credentialId !== issuance.credentialId || grant.ownerUid !== credential.ownerUid) {
+    throw new HttpError(401, "invalid_gateway_token");
+  }
+
+  if (
+    (issuance.accessScopeType === "user_email" && grant.granteeType !== "user_email") ||
+    (issuance.accessScopeType === "email_domain" && grant.granteeType !== "email_domain")
+  ) {
+    throw new HttpError(401, "invalid_gateway_token");
+  }
+
+  if (grant.granteeValue !== issuance.accessScopeValue) {
+    throw new HttpError(401, "invalid_gateway_token");
+  }
+
   return {
-    credential: credentialSnapshot.data() as StoredCredentialDocument,
+    credential,
     secret: secretSnapshot.data() as StoredCredentialSecretDocument,
   };
 }
@@ -748,9 +800,12 @@ async function handleCreateGrant(request: Request, response: JsonResponse, crede
   await db.runTransaction(async (transaction) => {
     const grantSnapshot = await transaction.get(grantRef);
     if (grantSnapshot.exists) {
-      const existingGrant = grantSnapshot.data() as StoredGrantDocument;
-      if (grantStatus(existingGrant) === "active") {
+      const existingGrant = grantSnapshot.data() as Partial<StoredGrantDocument>;
+      if (existingGrant.status === "active") {
         throw new HttpError(409, "grant_already_exists");
+      }
+      if (existingGrant.status !== "revoked") {
+        throw new Error("grant status must be active or revoked");
       }
 
       outcome = "reactivated";
@@ -813,13 +868,23 @@ async function handleRevokeGrant(request: Request, response: JsonResponse, grant
     throw new HttpError(404, "grant_not_found");
   }
 
-  const grant = grantSnapshot.data() as StoredGrantDocument;
+  const grant = grantSnapshot.data() as Partial<StoredGrantDocument>;
   if (grant.ownerUid !== actor.uid) {
     throw new HttpError(403, "grant_owner_required");
   }
 
-  if (grantStatus(grant) === "revoked") {
+  if (grant.status === "revoked") {
     throw new HttpError(409, "grant_already_revoked");
+  }
+  if (grant.status !== "active") {
+    throw new Error("grant status must be active or revoked");
+  }
+  if (
+    typeof grant.credentialId !== "string" ||
+    (grant.granteeType !== "user_email" && grant.granteeType !== "email_domain") ||
+    typeof grant.granteeValue !== "string"
+  ) {
+    throw new Error("grant is missing required fields");
   }
 
   const credentialRef = db.collection(COLLECTIONS.credentials).doc(grant.credentialId);
