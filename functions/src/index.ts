@@ -329,7 +329,8 @@ function auditUsageEventFromEntry(entry: any): AuditUsageEvent | null {
     return null;
   }
 
-  const rawTimestamp = entry.metadata?.timestamp ?? payload.timestamp;
+  const rawTimestamp =
+    typeof payload.timestamp === "string" ? payload.timestamp : entry.metadata?.timestamp;
   if (typeof rawTimestamp !== "string") {
     return null;
   }
@@ -397,7 +398,22 @@ async function rebuildGrantUsageSummaryCache() {
   });
 
   const eventsByGrant = new Map<string, AuditUsageEvent[]>();
-  for (const entry of entries) {
+  for (const [index, entry] of entries.entries()) {
+    if (index < 5) {
+      const hasMetadata = typeof entry === "object" && entry !== null && "metadata" in entry;
+      const metadata = hasMetadata && typeof entry.metadata === "object" && entry.metadata !== null ? entry.metadata : null;
+      const metadataTimestamp = metadata && "timestamp" in metadata ? metadata.timestamp : null;
+      const metadataPayload = metadata && "payload" in metadata ? metadata.payload : null;
+      const metadataJsonPayload = metadata && "jsonPayload" in metadata ? metadata.jsonPayload : null;
+      logger.info("refreshGrantUsageSummaries: inspect entry shape", {
+        index,
+        data: entry.data,
+        metadataTimestamp,
+        metadataPayload,
+        metadataJsonPayload,
+      });
+    }
+
     const event = auditUsageEventFromEntry(entry);
     if (event === null) {
       continue;
