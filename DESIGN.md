@@ -227,7 +227,7 @@
 #### 3. Credential 一覧画面
 
 - 目的: 自分が登録した provider credential を確認する
-- 主な要素: credential 一覧、`新規登録`、`詳細`、`無効化`
+- 主な要素: 状態付き credential 一覧、`新規登録`、`詳細`、状態に応じた `無効化` または `再有効化`
 - 遷移先: Credential 登録画面、Credential 詳細画面
 
 #### 4. Credential 登録画面
@@ -241,11 +241,11 @@
 - 目的: credential の詳細、共有状態、共有履歴、grant ごとの利用状況を確認し、共有の停止や再共有を管理する
 - 主な要素:
   - credential 情報
+  - credential の状態に応じた `無効化` または `再有効化`
   - 状態付き grant 一覧
   - grant ごとの usage 情報
   - `委譲追加`
   - grant の状態に応じた `取り消し` または `再共有`
-  - `無効化`
 - 遷移先: Grant 作成画面
 
 #### 6. Grant 作成画面
@@ -403,6 +403,18 @@
 - レスポンス:
   - 更新後の credential
 
+#### `POST /api/credentials/{credentialId}/enable`
+
+- 用途: disabled 状態の credential を再有効化する
+- 認証: 必須
+- 主な処理:
+  - owner であることを確認する
+  - `credentials/{credentialId}` を `active` に戻す
+  - `disabledAt` を解除する
+  - 監査イベントを出す
+- レスポンス:
+  - 更新後の credential
+
 ### Grant 管理 API
 
 #### `POST /api/credentials/{credentialId}/grants`
@@ -475,7 +487,7 @@
   - owner 自身の `grants`
   - owner または委譲先として参照可能な `credentials`
 - Management API 経由:
-  - credential 登録、無効化
+  - credential 登録、無効化、再有効化
   - grant 作成、取り消し
 - Device Flow API:
   - device flow 開始

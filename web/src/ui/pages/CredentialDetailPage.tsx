@@ -4,6 +4,10 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
@@ -19,7 +23,7 @@ import Typography from "@mui/material/Typography";
 import { useMemo, useState } from "react";
 import { useIntl } from "react-intl";
 import { Link as RouterLink, useParams } from "react-router-dom";
-import { createGrant, disableCredential, revokeGrant } from "../../api/management";
+import { createGrant, disableCredential, enableCredential, revokeGrant } from "../../api/management";
 import { useAuth } from "../../auth/AuthProvider";
 import { useCredential } from "../../credentials/useCredential";
 import { useOwnedGrants } from "../../grants/useOwnedGrants";
@@ -72,7 +76,9 @@ export function CredentialDetailPage() {
   const { credential, loading: credentialLoading, error: credentialError } = useCredential(credentialId);
   const { grants, loading: grantsLoading, error: grantsError } = useOwnedGrants(user?.uid ?? null, credentialId);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [disableConfirmOpen, setDisableConfirmOpen] = useState(false);
   const isOwner = credential !== null && user !== null && credential.ownerUid === user.uid;
+  const activeGrantCount = useMemo(() => grants.filter((grant) => grant.status === "active").length, [grants]);
   const grantsWithUsage = useMemo(
     () =>
       grants.map((grant) => ({
@@ -98,6 +104,29 @@ export function CredentialDetailPage() {
 
     try {
       await disableCredential(credentialId);
+    } catch (caught: unknown) {
+      setActionError((caught as Error).message);
+    }
+  }
+
+  function handleDisableClick() {
+    if (activeGrantCount > 0) {
+      setDisableConfirmOpen(true);
+      return;
+    }
+
+    void handleDisable();
+  }
+
+  async function handleEnable() {
+    if (credentialId === undefined) {
+      return;
+    }
+
+    setActionError(null);
+
+    try {
+      await enableCredential(credentialId);
     } catch (caught: unknown) {
       setActionError((caught as Error).message);
     }
@@ -143,11 +172,40 @@ export function CredentialDetailPage() {
           ) : null}
         </Stack>
         {isOwner ? (
-          <Button color="inherit" onClick={() => void handleDisable()} type="button" variant="outlined">
-            {intl.formatMessage({ id: "credentialDetail.disable" })}
-          </Button>
+          credential?.status === "active" ? (
+            <Button color="error" onClick={handleDisableClick} type="button" variant="outlined">
+              {intl.formatMessage({ id: "credentialDetail.disable" })}
+            </Button>
+          ) : (
+            <Button color="success" onClick={() => void handleEnable()} type="button" variant="outlined">
+              {intl.formatMessage({ id: "credentialDetail.enable" })}
+            </Button>
+          )
         ) : null}
       </Stack>
+
+      <Dialog onClose={() => setDisableConfirmOpen(false)} open={disableConfirmOpen}>
+        <DialogTitle>{intl.formatMessage({ id: "credentialDetail.disableConfirmTitle" })}</DialogTitle>
+        <DialogContent>
+          <Typography>{intl.formatMessage({ id: "credentialDetail.disableConfirmDescription" })}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button color="inherit" onClick={() => setDisableConfirmOpen(false)} type="button">
+            {intl.formatMessage({ id: "credentialDetail.disableConfirmCancel" })}
+          </Button>
+          <Button
+            color="error"
+            onClick={() => {
+              setDisableConfirmOpen(false);
+              void handleDisable();
+            }}
+            type="button"
+            variant="contained"
+          >
+            {intl.formatMessage({ id: "credentialDetail.disableConfirmSubmit" })}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {credentialError !== null ? <FormNotice message={credentialError} tone="error" /> : null}
       {grantsError !== null ? <FormNotice message={grantsError} tone="error" /> : null}

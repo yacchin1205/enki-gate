@@ -47,6 +47,16 @@ export async function disableCredential(credentialId: string) {
   return parseJson(response);
 }
 
+export async function enableCredential(credentialId: string) {
+  const headers = await authorizedHeaders();
+  const response = await fetch(`${apiBaseUrl}/api/credentials/${credentialId}/enable`, {
+    method: "POST",
+    headers,
+  });
+
+  return parseJson(response);
+}
+
 export async function createGrant(credentialId: string, input: CreateGrantRequest) {
   const headers = await authorizedHeaders();
   const response = await fetch(`${apiBaseUrl}/api/credentials/${credentialId}/grants`, {

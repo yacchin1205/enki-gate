@@ -669,6 +669,10 @@ async function handleCreateCredential(request: Request, response: JsonResponse) 
 async function handleDisableCredential(request: Request, response: JsonResponse, credentialId: string) {
   const actor = await requireAuthenticatedUser(request);
   const { ref, data } = await requireOwnedCredential(credentialId, actor.uid);
+  if (data.status === "disabled") {
+    throw new HttpError(409, "credential_already_disabled");
+  }
+
   const updatedAt = nowTimestamp();
   await ref.update({
     status: "disabled",
@@ -690,6 +694,37 @@ async function handleDisableCredential(request: Request, response: JsonResponse,
     provider: data.provider,
     label: data.label,
     status: "disabled",
+  });
+}
+
+async function handleEnableCredential(request: Request, response: JsonResponse, credentialId: string) {
+  const actor = await requireAuthenticatedUser(request);
+  const { ref, data } = await requireOwnedCredential(credentialId, actor.uid);
+  if (data.status === "active") {
+    throw new HttpError(409, "credential_already_active");
+  }
+
+  const updatedAt = nowTimestamp();
+  await ref.update({
+    status: "active",
+    disabledAt: FieldValue.delete(),
+    updatedAt,
+  });
+
+  writeAuditLog({
+    actorUid: actor.uid,
+    actorEmail: actor.email,
+    credentialId,
+    credentialOwnerUid: actor.uid,
+    eventType: "credential_enabled",
+    result: "success",
+  });
+
+  response.json({
+    credentialId,
+    provider: data.provider,
+    label: data.label,
+    status: "active",
   });
 }
 
@@ -999,6 +1034,12 @@ export const api = onRequest({ cors: true, region }, async (request, response) =
     const disableCredentialMatch = path.match(/^\/api\/credentials\/([^/]+)\/disable$/);
     if (request.method === "POST" && disableCredentialMatch !== null) {
       await handleDisableCredential(request, response, decodeURIComponent(disableCredentialMatch[1]));
+      return;
+    }
+
+    const enableCredentialMatch = path.match(/^\/api\/credentials\/([^/]+)\/enable$/);
+    if (request.method === "POST" && enableCredentialMatch !== null) {
+      await handleEnableCredential(request, response, decodeURIComponent(enableCredentialMatch[1]));
       return;
     }
 
