@@ -1,0 +1,52 @@
+@startuml
+title UC03 Credential user が user code で device flow を完了する
+
+actor "Credential user" as User
+participant "Client application" as Client
+participant "Enki Gate UI" as UI
+participant "Enki Gate API" as API
+database "Firestore" as Firestore
+participant "Cloud Logging" as Logging
+
+Client -> API: device flow を開始
+API -> Firestore: device flow を作成
+Firestore --> API: deviceCode / userCode
+API --> Client: deviceCode / userCode / verification URI
+
+User -> UI: Enki Gate の device flow 画面を開く
+UI --> User: Google ログインを促す
+User -> UI: Google でログイン
+User -> UI: user code を入力
+UI -> API: user code の検証を要求
+API -> Firestore: device flow を検索
+Firestore --> API: device flow 状態
+API --> UI: user code の検証結果
+UI -> Firestore: 認証済みユーザーとして利用可能 credential を取得
+Firestore --> UI: 選択可能な credential 一覧
+UI --> User: credential 一覧を表示
+
+User -> UI: 利用する credential を選択
+UI -> API: device flow 完了を要求
+API -> Firestore: device flow を authorized に更新
+Firestore --> API: 記録完了
+API -> Logging: device flow 完了を記録
+API --> UI: 完了結果を返す
+UI --> User: 利用開始完了を表示
+
+loop polling
+  Client -> API: device flow 状態を確認
+  API -> Firestore: device flow を確認
+  Firestore --> API: pending または authorized
+
+  alt pending
+    API --> Client: pending
+  else authorized
+    API -> Firestore: token issuance を記録
+    Firestore --> API: 記録完了
+    API -> Firestore: device flow を completed に更新
+    Firestore --> API: 更新完了
+    API -> Logging: token 発行を記録
+    API --> Client: gateway token を返す
+  end
+end
+@enduml

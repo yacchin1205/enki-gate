@@ -1,0 +1,85 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function authUid() {
+      return request.auth.uid;
+    }
+
+    function authEmail() {
+      return request.auth.token.email;
+    }
+
+    function authEmailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(authUid()));
+    }
+
+    function userDomain() {
+      return userDoc().data.domain;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && authUid() == uid;
+    }
+
+    function isOwner(ownerUid) {
+      return isSignedIn() && authUid() == ownerUid;
+    }
+
+    function canReadCredential() {
+      return isSignedIn() && (
+        resource.data.ownerUid == authUid() ||
+        authEmail() in resource.data.allowedUserEmails ||
+        userDomain() in resource.data.allowedDomains
+      );
+    }
+
+    function validUserDoc() {
+      return request.resource.data.email is string &&
+        request.resource.data.domain is string &&
+        request.resource.data.displayName is string &&
+        request.resource.data.photoURL is string &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp &&
+        request.resource.data.email == authEmail() &&
+        authEmail().matches('^[^@]+@' + request.resource.data.domain + '$');
+    }
+
+    match /users/{uid} {
+      allow get: if isSelf(uid);
+      allow list: if false;
+      allow create, update: if isSelf(uid) && authEmailVerified() && validUserDoc();
+      allow delete: if false;
+    }
+
+    match /credentials/{credentialId} {
+      allow read: if canReadCredential();
+      allow create, update, delete: if false;
+    }
+
+    match /credential_secrets/{credentialId} {
+      allow read, write: if false;
+    }
+
+    match /grants/{grantId} {
+      allow read: if isOwner(resource.data.ownerUid);
+      allow create, update, delete: if false;
+    }
+
+    match /token_issuances/{issuanceId} {
+      allow read, write: if false;
+    }
+
+    match /device_flows/{userCode} {
+      allow read, write: if false;
+    }
+  }
+}

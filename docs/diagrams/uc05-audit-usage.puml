@@ -1,0 +1,12 @@
+@startuml
+title UC05 Enki Gate が利用と policy decision を監査する
+
+participant "Enki Gate API" as API
+participant "Cloud Logging" as Logging
+
+API -> Logging: 認証イベントを記録
+API -> Logging: token 発行イベントを記録
+API -> Logging: request metadata を記録
+API -> Logging: policy decision を記録
+API -> Logging: usage と cost を記録
+@enduml
