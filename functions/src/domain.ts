@@ -2,6 +2,7 @@ export const COLLECTIONS = {
   users: "users",
   credentials: "credentials",
   credentialSecrets: "credential_secrets",
+  credentialUsages: "credential_usages",
   grants: "grants",
   tokenIssuances: "token_issuances",
   deviceFlows: "device_flows",
@@ -43,6 +44,14 @@ export type CredentialSecretDocument = {
   kmsKeyName: string;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type CredentialUsageDocument = {
+  credentialId: string;
+  ownerUid: string;
+  lastAccessAt?: Date;
+  usageSummary7d: GrantUsagePoint[];
+  usageUpdatedAt?: Date;
 };
 
 export type GrantDocument = {

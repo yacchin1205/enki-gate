@@ -26,6 +26,7 @@ import { Link as RouterLink, useParams } from "react-router-dom";
 import { createGrant, disableCredential, enableCredential, revokeGrant } from "../../api/management";
 import { useAuth } from "../../auth/AuthProvider";
 import { useCredential } from "../../credentials/useCredential";
+import { useCredentialUsage } from "../../credentials/useCredentialUsage";
 import { useOwnedGrants } from "../../grants/useOwnedGrants";
 import { FormNotice } from "../components/FormNotice";
 import { Sparkline } from "../components/Sparkline";
@@ -74,10 +75,21 @@ export function CredentialDetailPage() {
   const { user } = useAuth();
   const intl = useIntl();
   const { credential, loading: credentialLoading, error: credentialError } = useCredential(credentialId);
-  const { grants, loading: grantsLoading, error: grantsError } = useOwnedGrants(user?.uid ?? null, credentialId);
+  const isOwner = credential !== null && user !== null && credential.ownerUid === user.uid;
+  const { usage: credentialUsage, loading: usageLoading, error: usageError } = useCredentialUsage(isOwner ? user.uid : null, credentialId);
+  const { grants, loading: grantsLoading, error: grantsError } = useOwnedGrants(isOwner ? user.uid : null, credentialId);
   const [actionError, setActionError] = useState<string | null>(null);
   const [disableConfirmOpen, setDisableConfirmOpen] = useState(false);
-  const isOwner = credential !== null && user !== null && credential.ownerUid === user.uid;
+  const ownerUsageSummary = useMemo(() => {
+    if (credentialUsage === null) {
+      return null;
+    }
+
+    return {
+      totalCount: credentialUsage.usageSummary7d.reduce((sum, point) => sum + point.requestCount, 0),
+      sparklineValues: credentialUsage.usageSummary7d.map((point) => point.requestCount),
+    };
+  }, [credentialUsage]);
   const activeGrantCount = useMemo(() => grants.filter((grant) => grant.status === "active").length, [grants]);
   const grantsWithUsage = useMemo(
     () =>
@@ -208,6 +220,7 @@ export function CredentialDetailPage() {
       </Dialog>
 
       {credentialError !== null ? <FormNotice message={credentialError} tone="error" /> : null}
+      {usageError !== null ? <FormNotice message={usageError} tone="error" /> : null}
       {grantsError !== null ? <FormNotice message={grantsError} tone="error" /> : null}
       {actionError !== null ? <FormNotice message={actionError} tone="error" /> : null}
       {credentialLoading ? (
@@ -246,6 +259,39 @@ export function CredentialDetailPage() {
 
       {isOwner ? (
         <>
+          <Stack spacing={1}>
+            <Typography variant="h5">{intl.formatMessage({ id: "credentialDetail.myUsageSection" })}</Typography>
+            <TableContainer component={Paper} variant="outlined">
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>{intl.formatMessage({ id: "credentialDetail.table.last7d" })}</TableCell>
+                    <TableCell align="right">{intl.formatMessage({ id: "credentialDetail.table.count" })}</TableCell>
+                    <TableCell>{intl.formatMessage({ id: "credentialDetail.table.lastAccess" })}</TableCell>
+                    <TableCell>{intl.formatMessage({ id: "credentialDetail.table.usageUpdatedAt" })}</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  <TableRow hover>
+                    <TableCell>
+                      {ownerUsageSummary !== null && credentialUsage !== null && credentialUsage.usageSummary7d.length > 0
+                        ? <Sparkline values={ownerUsageSummary.sparklineValues} />
+                        : intl.formatMessage({ id: "common.none" })}
+                    </TableCell>
+                    <TableCell align="right">{ownerUsageSummary?.totalCount ?? 0}</TableCell>
+                    <TableCell>{formatRelativeTime(intl, credentialUsage?.lastAccessAt)}</TableCell>
+                    <TableCell>{formatDate(intl, credentialUsage?.usageUpdatedAt)}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+              {usageLoading ? (
+                <Stack alignItems="center" justifyContent="center" spacing={1} sx={{ py: 6 }}>
+                  <CircularProgress size={28} />
+                </Stack>
+              ) : null}
+            </TableContainer>
+          </Stack>
+
           <Stack alignItems="center" direction="row" justifyContent="space-between" spacing={2}>
             <Typography variant="h5">{intl.formatMessage({ id: "credentialDetail.sharingSection" })}</Typography>
             <Button

@@ -42,6 +42,14 @@ service cloud.firestore {
       );
     }
 
+    function credentialDoc(credentialId) {
+      return get(/databases/$(database)/documents/credentials/$(credentialId));
+    }
+
+    function canReadCredentialUsage(credentialId) {
+      return isSignedIn() && credentialDoc(credentialId).data.ownerUid == authUid();
+    }
+
     function validUserDoc() {
       return request.resource.data.email is string &&
         request.resource.data.domain is string &&
@@ -67,6 +75,11 @@ service cloud.firestore {
 
     match /credential_secrets/{credentialId} {
       allow read, write: if false;
+    }
+
+    match /credential_usages/{credentialId} {
+      allow read: if canReadCredentialUsage(credentialId);
+      allow create, update, delete: if false;
     }
 
     match /grants/{grantId} {

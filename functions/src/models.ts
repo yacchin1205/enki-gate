@@ -2,6 +2,7 @@ import type {
   GrantUsagePoint,
   CredentialDocument,
   CredentialSecretDocument,
+  CredentialUsageDocument,
   DeviceFlowDocument,
   GrantDocument,
   TokenIssuanceDocument,
@@ -17,6 +18,12 @@ export type StoredCredentialDocument = Omit<CredentialDocument, "createdAt" | "u
 export type StoredCredentialSecretDocument = Omit<CredentialSecretDocument, "createdAt" | "updatedAt"> & {
   createdAt: Timestamp;
   updatedAt: Timestamp;
+};
+
+export type StoredCredentialUsageDocument = Omit<CredentialUsageDocument, "lastAccessAt" | "usageUpdatedAt"> & {
+  lastAccessAt?: Timestamp;
+  usageUpdatedAt?: Timestamp;
+  usageSummary7d: GrantUsagePoint[];
 };
 
 export type StoredGrantDocument = Omit<GrantDocument, "createdAt" | "updatedAt" | "revokedAt" | "lastAccessAt" | "usageUpdatedAt"> & {

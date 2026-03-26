@@ -26,6 +26,7 @@ import { decryptProviderSecret, encryptProviderSecret } from "./kms.js";
 import type {
   StoredCredentialDocument,
   StoredCredentialSecretDocument,
+  StoredCredentialUsageDocument,
   StoredDeviceFlowDocument,
   StoredGrantDocument,
   StoredTokenIssuanceDocument,
@@ -370,8 +371,35 @@ async function recordGrantLastAccess(issuance: StoredTokenIssuanceDocument) {
   });
 }
 
+async function recordCredentialUsageLastAccess(issuance: StoredTokenIssuanceDocument) {
+  if (issuance.accessScopeType !== "owner") {
+    return;
+  }
+
+  const usageRef = db.collection(COLLECTIONS.credentialUsages).doc(issuance.credentialId);
+  const lastAccessAt = nowTimestamp();
+  await db.runTransaction(async (transaction) => {
+    const usageSnapshot = await transaction.get(usageRef);
+    if (usageSnapshot.exists) {
+      transaction.update(usageRef, {
+        lastAccessAt,
+      });
+      return;
+    }
+
+    transaction.create(usageRef, {
+      credentialId: issuance.credentialId,
+      ownerUid: issuance.credentialOwnerUid,
+      lastAccessAt,
+      usageSummary7d: emptyUsageSummary7d(),
+    } satisfies StoredCredentialUsageDocument);
+  });
+}
+
 type AuditUsageEvent = {
-  grantId: string;
+  credentialId: string;
+  accessScopeType: AccessScopeType;
+  grantId?: string;
   timestamp: Date;
 };
 
@@ -393,7 +421,22 @@ function auditUsageEventFromEntry(entry: any): AuditUsageEvent {
     throw new Error("refreshGrantUsageSummaries: eventType missing from audit entry");
   }
 
-  if (typeof payload.grantId !== "string" || payload.grantId.length === 0) {
+  if (typeof payload.credentialId !== "string" || payload.credentialId.length === 0) {
+    throw new Error("refreshGrantUsageSummaries: credentialId missing from audit entry");
+  }
+
+  if (
+    payload.accessScopeType !== "owner" &&
+    payload.accessScopeType !== "user_email" &&
+    payload.accessScopeType !== "email_domain"
+  ) {
+    throw new Error("refreshGrantUsageSummaries: accessScopeType missing from audit entry");
+  }
+
+  if (
+    payload.accessScopeType !== "owner" &&
+    (typeof payload.grantId !== "string" || payload.grantId.length === 0)
+  ) {
     throw new Error("refreshGrantUsageSummaries: grantId missing from audit entry");
   }
 
@@ -407,7 +450,9 @@ function auditUsageEventFromEntry(entry: any): AuditUsageEvent {
   }
 
   return {
-    grantId: payload.grantId,
+    credentialId: payload.credentialId,
+    accessScopeType: payload.accessScopeType,
+    grantId: typeof payload.grantId === "string" ? payload.grantId : undefined,
     timestamp,
   };
 }
@@ -424,6 +469,16 @@ function sevenDayUsageSummary(events: AuditUsageEvent[]) {
     dateKey,
     requestCount: counts.get(dateKey) ?? 0,
   }));
+}
+
+function latestUsageTimestamp(events: AuditUsageEvent[]) {
+  if (events.length === 0) {
+    return undefined;
+  }
+
+  return Timestamp.fromDate(
+    events.reduce((latest, event) => (event.timestamp.getTime() > latest.getTime() ? event.timestamp : latest), events[0].timestamp),
+  );
 }
 
 async function updateGrantUsageSummaryBatch(
@@ -446,7 +501,41 @@ async function updateGrantUsageSummaryBatch(
   await batch.commit();
 }
 
-async function rebuildGrantUsageSummaryCache() {
+async function updateCredentialUsageSummaryBatch(
+  refs: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>[],
+  updatedAt: Timestamp,
+  eventsByCredential: Map<string, AuditUsageEvent[]>,
+  ownerUidByCredentialId: Map<string, string>,
+) {
+  if (refs.length === 0) {
+    return;
+  }
+
+  const batch = db.batch();
+  for (const ref of refs) {
+    const ownerUid = ownerUidByCredentialId.get(ref.id);
+    if (ownerUid === undefined) {
+      throw new Error("credential usage owner is missing");
+    }
+
+    const usageDocument: Record<string, unknown> = {
+      credentialId: ref.id,
+      ownerUid,
+      usageSummary7d: sevenDayUsageSummary(eventsByCredential.get(ref.id) ?? []),
+      usageUpdatedAt: updatedAt,
+    };
+    const lastAccessAt = latestUsageTimestamp(eventsByCredential.get(ref.id) ?? []);
+    if (lastAccessAt !== undefined) {
+      usageDocument.lastAccessAt = lastAccessAt;
+    }
+
+    batch.set(ref, usageDocument as StoredCredentialUsageDocument, { merge: true });
+  }
+
+  await batch.commit();
+}
+
+async function rebuildUsageSummaryCaches() {
   const since = new Date();
   since.setDate(since.getDate() - 6);
   since.setHours(0, 0, 0, 0);
@@ -469,6 +558,7 @@ async function rebuildGrantUsageSummaryCache() {
   });
 
   const eventsByGrant = new Map<string, AuditUsageEvent[]>();
+  const eventsByCredential = new Map<string, AuditUsageEvent[]>();
   const parseWarnings: Array<{
     message: string;
     payload: unknown;
@@ -484,6 +574,17 @@ async function rebuildGrantUsageSummaryCache() {
       });
       continue;
     }
+    if (event.accessScopeType === "owner") {
+      const existing = eventsByCredential.get(event.credentialId) ?? [];
+      existing.push(event);
+      eventsByCredential.set(event.credentialId, existing);
+      continue;
+    }
+
+    if (event.grantId === undefined) {
+      throw new Error("grantId is required for shared usage event");
+    }
+
     const existing = eventsByGrant.get(event.grantId) ?? [];
     existing.push(event);
     eventsByGrant.set(event.grantId, existing);
@@ -502,12 +603,27 @@ async function rebuildGrantUsageSummaryCache() {
       dates: sevenDayUsageSummary(events),
     })),
   });
+  logger.info("refreshGrantUsageSummaries: grouped owner usage events by credential", {
+    credentialCount: eventsByCredential.size,
+    credentials: Array.from(eventsByCredential.entries()).map(([credentialId, events]) => ({
+      credentialId,
+      eventCount: events.length,
+      dates: sevenDayUsageSummary(events),
+    })),
+  });
 
-  const grantsSnapshot = await db.collection(COLLECTIONS.grants).get();
+  const [grantsSnapshot, credentialsSnapshot] = await Promise.all([
+    db.collection(COLLECTIONS.grants).get(),
+    db.collection(COLLECTIONS.credentials).get(),
+  ]);
   const updatedAt = nowTimestamp();
   logger.info("refreshGrantUsageSummaries: loaded grants", {
     grantDocumentCount: grantsSnapshot.size,
     grantIds: grantsSnapshot.docs.map((snapshot) => snapshot.id),
+  });
+  logger.info("refreshGrantUsageSummaries: loaded credentials for owner usage", {
+    credentialDocumentCount: credentialsSnapshot.size,
+    credentialIds: credentialsSnapshot.docs.map((snapshot) => snapshot.id),
   });
   let refs: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>[] = [];
   for (const snapshot of grantsSnapshot.docs) {
@@ -519,8 +635,29 @@ async function rebuildGrantUsageSummaryCache() {
   }
 
   await updateGrantUsageSummaryBatch(refs, updatedAt, eventsByGrant);
+  const ownerUidByCredentialId = new Map<string, string>();
+  refs = [];
+  for (const snapshot of credentialsSnapshot.docs) {
+    const credential = snapshot.data() as Partial<StoredCredentialDocument>;
+    if (typeof credential.ownerUid !== "string" || credential.ownerUid.length === 0) {
+      throw new Error("credential ownerUid is missing");
+    }
+
+    ownerUidByCredentialId.set(snapshot.id, credential.ownerUid);
+    refs.push(db.collection(COLLECTIONS.credentialUsages).doc(snapshot.id));
+    if (refs.length === 400) {
+      await updateCredentialUsageSummaryBatch(refs, updatedAt, eventsByCredential, ownerUidByCredentialId);
+      refs = [];
+    }
+  }
+
+  await updateCredentialUsageSummaryBatch(refs, updatedAt, eventsByCredential, ownerUidByCredentialId);
   logger.info("refreshGrantUsageSummaries: updated grants", {
     updatedGrantCount: grantsSnapshot.size,
+    updatedAt: updatedAt.toDate().toISOString(),
+  });
+  logger.info("refreshGrantUsageSummaries: updated credential usages", {
+    updatedCredentialCount: credentialsSnapshot.size,
     updatedAt: updatedAt.toDate().toISOString(),
   });
 }
@@ -703,6 +840,11 @@ async function handleCreateCredential(request: Request, response: JsonResponse) 
       createdAt: now,
       updatedAt: now,
     } satisfies StoredCredentialDocument);
+    transaction.create(db.collection(COLLECTIONS.credentialUsages).doc(credentialRef.id), {
+      credentialId: credentialRef.id,
+      ownerUid: actor.uid,
+      usageSummary7d: emptyUsageSummary7d(),
+    } satisfies StoredCredentialUsageDocument);
     transaction.create(db.collection(COLLECTIONS.credentialSecrets).doc(credentialRef.id), {
       ownerUid: actor.uid,
       ciphertext: encryptedSecret.ciphertext,
@@ -1026,6 +1168,7 @@ async function handleChatCompletions(
   });
   if (upstream.ok) {
     await recordGrantLastAccess(issuance);
+    await recordCredentialUsageLastAccess(issuance);
   }
 
   writeAuditLog({
@@ -1065,6 +1208,7 @@ async function handleResponses(
   });
   if (upstream.ok) {
     await recordGrantLastAccess(issuance);
+    await recordCredentialUsageLastAccess(issuance);
   }
 
   writeAuditLog({
@@ -1167,6 +1311,6 @@ export const refreshGrantUsageSummaries = onSchedule(
     timeZone: "Asia/Tokyo",
   },
   async () => {
-    await rebuildGrantUsageSummaryCache();
+    await rebuildUsageSummaryCaches();
   },
 );

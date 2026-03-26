@@ -82,6 +82,14 @@
 - クライアント write: 不可
 - サーバ write: 可
 
+### `credential_usages/{credentialId}`
+
+- 用途: owner 自身による credential 利用の集計キャッシュ
+- 主なフィールド: `credentialId`, `ownerUid`, `lastAccessAt`, `usageSummary7d`, `usageUpdatedAt`
+- クライアント read: owner のみ可
+- クライアント write: 不可
+- サーバ write: 可
+
 ### `grants/{grantId}`
 
 - 用途: credential の委譲状態
@@ -112,7 +120,8 @@
 ## Firestore 設計上の要点
 
 - `credentials` と `credential_secrets` は分ける。UI が参照する可能性があるのは `credentials` だけで、`credential_secrets` は常にサーバ専用にする
-- `grants` は委譲の正規データかつ usage 集計の保持先として持つ
+- `credential_usages` は owner 自身の利用実績を保持する。`credentials` は共有先にも read されるため、owner usage を同居させない
+- `grants` は委譲の正規データかつ共有利用の usage 集計の保持先として持つ
 - `credentials.allowedUserEmails` と `credentials.allowedDomains` は、UI の直接クエリと Security Rules を単純に保つための派生データとして持つ
 - grant の作成と取り消しは API が行い、そのたびに `grants` と `credentials.allowed*` を一緒に更新する
 - grant の取り消しは物理削除ではなく論理状態遷移として扱い、usage と監査の参照に必要なレコードは保持する
@@ -121,6 +130,7 @@
 - 同じ共有先に再度共有する場合は新しい grant を増やさず、既存 grant を `revoked -> active` に戻す
 - 再共有時も `createdAt` は維持し、最新の状態変更時刻は `updatedAt` に、owner が共有を止めた時刻は `revokedAt` に保持する
 - `lastAccessAt` と `usageSummary7d` は grant の利用実績を示す。共有の停止後も履歴として保持し、実際の利用有無の確認はこれらと監査ログで行う
+- owner 自身の利用実績は `credential_usages/{credentialId}` に保持し、shared user に見えない owner 専用情報として扱う
 - device flow の状態は `device_flows/{userCode}` に持ち、browser 側は `userCode` で認可対象を特定する
 - `deviceCode` は `device_flows` のフィールドとして保持し、client 側の polling で照合する
 - `userCode` は、人間が認可対象の device flow を特定し、誤認可を避けるための確認コードとして使う
@@ -195,6 +205,11 @@
 
 - クライアントからの read / write は常に不可
 
+### `credential_usages`
+
+- owner だけが read 可
+- クライアント write は不可
+
 ### `grants`
 
 - owner だけが read 可
@@ -238,9 +253,10 @@
 
 #### 5. Credential 詳細画面
 
-- 目的: credential の詳細、共有状態、共有履歴、grant ごとの利用状況を確認し、共有の停止や再共有を管理する
+- 目的: credential の詳細、owner 自身の利用状況、共有状態、共有履歴、grant ごとの利用状況を確認し、共有の停止や再共有を管理する
 - 主な要素:
   - credential 情報
+  - owner 自身の利用状況
   - credential の状態に応じた `無効化` または `再有効化`
   - 状態付き grant 一覧
   - grant ごとの usage 情報
@@ -295,6 +311,7 @@
 - 一覧取得は可能な限り Firestore 直読みを前提にする
 - 状態変更は監査のため API 経由に寄せる
 - Credential 詳細画面の grant 一覧は active / revoked の両方を表示対象とし、現在の共有状態と過去の共有履歴を同じ資源として扱う
+- Credential 詳細画面では owner 自身の利用状況と shared user の利用状況を分けて表示する
 - grant 一覧には少なくとも共有先、状態、利用状況、主要な時刻情報を表示し、取り消し後も usage と監査上の参照を失わない
 
 ## 外部インターフェース設計
