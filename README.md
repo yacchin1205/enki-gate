@@ -2,7 +2,7 @@
 
 Enki Gate is an auditable AI access gateway that sits between untrusted or semi-trusted clients and upstream LLM providers.
 
-The goal is simple: do not distribute provider API keys to clients. Instead, centralize authentication, authorization, usage control, and auditing for AI access on the gateway side. The OpenAI-compatible API exists as a way to apply that control layer to existing tools without forcing them to adopt a custom protocol.
+The goal is simple: do not distribute provider API keys to clients. Instead, centralize authentication, authorization, gateway-token issuance, and auditing for AI access on the gateway side. The OpenAI-compatible API exists as a way to apply that control layer to existing tools without forcing them to adopt a custom protocol.
 
 ## What Enki Gate Governs
 
@@ -11,7 +11,7 @@ Enki Gate is not just governing API calls. It is governing the right to use AI.
 - Who is allowed to use it
 - Which credential they are using
 - Which models they may use and under what limits
-- How much they used and what cost was incurred
+- How much they used
 
 Rather than scattering those decisions across clients, Enki Gate keeps them in one place.
 
@@ -20,7 +20,7 @@ Rather than scattering those decisions across clients, Enki Gate keeps them in o
 - Provider API keys are stored only on the server side and are never sent to clients.
 - Clients receive only short-lived, scoped gateway tokens.
 - Every request is auditable, including both the actor and the credential owner.
-- Quotas, rate limits, model control, and routing are enforced by the gateway.
+- Credential selection, delegation state, and short-lived gateway-token issuance are enforced by the gateway.
 
 ## Permission Model
 
@@ -40,7 +40,7 @@ The main storage responsibilities are split as follows:
 
 - Firestore: user records, credential metadata, encrypted credentials, grants, token issuance records, and usage caches
 - Cloud KMS: key management for credential decryption
-- Cloud Logging: audit events for requests, usage, cost, and policy decisions
+- Cloud Logging: audit events for requests and usage
 
 Firebase is currently a strong deployment candidate, but secret isolation, key management, and audit logging are designed with the surrounding GCP responsibilities in mind.
 

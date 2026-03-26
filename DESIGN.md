@@ -38,11 +38,11 @@
 
 ![UC04](docs/diagrams/uc05-call-gateway-api.png)
 
-### 5. Enki Gate audits usage and policy decisions
+### 5. Enki Gate audits requests and usage
 
 - Primary actor: Enki Gate
 - Involved systems: Cloud Logging
-- Goal: Record who used which credential, from which client or session, and what usage and policy outcomes occurred
+- Goal: Record who used which credential, from which client or session, and what request and usage outcomes occurred
 - Diagram: `docs/diagrams/uc05-audit-usage.puml`
 
 ![UC05](docs/diagrams/uc05-audit-usage.png)
@@ -486,10 +486,9 @@
 - Main behavior:
   - Validate the gateway token
   - Resolve the actor, credential owner, and credential from `token_issuances`
-  - Evaluate policy
   - Decrypt the provider credential
   - Forward the request to the upstream provider
-  - Emit usage, cost, and policy-decision audit logs
+  - Emit request and usage audit logs
 
 #### `POST /v1/responses`
 
