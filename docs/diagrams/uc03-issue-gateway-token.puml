@@ -1,5 +1,5 @@
 @startuml
-title UC03 Credential user が user code で device flow を完了する
+title UC03 Credential user completes device flow with a user code
 
 actor "Credential user" as User
 participant "Client application" as Client
@@ -8,45 +8,45 @@ participant "Enki Gate API" as API
 database "Firestore" as Firestore
 participant "Cloud Logging" as Logging
 
-Client -> API: device flow を開始
-API -> Firestore: device flow を作成
+Client -> API: Start device flow
+API -> Firestore: Create the device flow
 Firestore --> API: deviceCode / userCode
 API --> Client: deviceCode / userCode / verification URI
 
-User -> UI: Enki Gate の device flow 画面を開く
-UI --> User: Google ログインを促す
-User -> UI: Google でログイン
-User -> UI: user code を入力
-UI -> API: user code の検証を要求
-API -> Firestore: device flow を検索
-Firestore --> API: device flow 状態
-API --> UI: user code の検証結果
-UI -> Firestore: 認証済みユーザーとして利用可能 credential を取得
-Firestore --> UI: 選択可能な credential 一覧
-UI --> User: credential 一覧を表示
+User -> UI: Open the Enki Gate device-flow page
+UI --> User: Prompt for Google sign-in
+User -> UI: Sign in with Google
+User -> UI: Enter the user code
+UI -> API: Request user-code validation
+API -> Firestore: Look up the device flow
+Firestore --> API: Device-flow state
+API --> UI: Return the validation result
+UI -> Firestore: Load credentials available to the signed-in user
+Firestore --> UI: Selectable credential list
+UI --> User: Show the credential list
 
-User -> UI: 利用する credential を選択
-UI -> API: device flow 完了を要求
-API -> Firestore: device flow を authorized に更新
-Firestore --> API: 記録完了
-API -> Logging: device flow 完了を記録
-API --> UI: 完了結果を返す
-UI --> User: 利用開始完了を表示
+User -> UI: Select the credential to use
+UI -> API: Request device-flow authorization
+API -> Firestore: Update the device flow to authorized
+Firestore --> API: Update complete
+API -> Logging: Record device-flow authorization
+API --> UI: Return the completion result
+UI --> User: Show completion
 
 loop polling
-  Client -> API: device flow 状態を確認
-  API -> Firestore: device flow を確認
-  Firestore --> API: pending または authorized
+  Client -> API: Check the device-flow state
+  API -> Firestore: Read the device flow
+  Firestore --> API: pending or authorized
 
   alt pending
     API --> Client: pending
   else authorized
-    API -> Firestore: token issuance を記録
-    Firestore --> API: 記録完了
-    API -> Firestore: device flow を completed に更新
-    Firestore --> API: 更新完了
-    API -> Logging: token 発行を記録
-    API --> Client: gateway token を返す
+    API -> Firestore: Record the token issuance
+    Firestore --> API: Recording complete
+    API -> Firestore: Update the device flow to completed
+    Firestore --> API: Update complete
+    API -> Logging: Record token issuance
+    API --> Client: Return the gateway token
   end
 end
 @enduml

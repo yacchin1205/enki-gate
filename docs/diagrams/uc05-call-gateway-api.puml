@@ -1,5 +1,5 @@
 @startuml
-title UC05 Client application が gateway API を呼び出す
+title UC04 Client application calls the gateway API
 
 participant "Client application" as Client
 participant "Enki Gate API" as API
@@ -8,13 +8,13 @@ collections "Cloud KMS" as KMS
 participant "Upstream provider" as Provider
 participant "Cloud Logging" as Logging
 
-Client -> API: OpenAI 互換 API を呼び出す\nwith gateway token
-API -> Firestore: token issuance と権限を確認
-Firestore --> API: actor / credential owner / credential 情報
-API -> KMS: credential 復号に必要な鍵処理を要求
-KMS --> API: 復号に必要な結果
-API -> Provider: provider API key を付与して request を中継
-Provider --> API: response と usage metadata
-API -> Logging: request / usage / policy decision を記録
-API --> Client: OpenAI 互換 response を返す
+Client -> API: Call the OpenAI-compatible API\nwith a gateway token
+API -> Firestore: Validate the token issuance and current access state
+Firestore --> API: actor / credential owner / credential data
+API -> KMS: Request key operations needed for decryption
+KMS --> API: Return decryption material
+API -> Provider: Forward the request with the provider API key
+Provider --> API: Response and usage metadata
+API -> Logging: Record request and usage events
+API --> Client: Return the OpenAI-compatible response
 @enduml

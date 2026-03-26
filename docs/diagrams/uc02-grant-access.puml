@@ -1,21 +1,21 @@
 @startuml
-title UC02 Credential owner が利用権を委譲する
+title UC02 Credential owner delegates usage rights
 
 actor "Credential owner" as Owner
 participant "Enki Gate UI" as UI
 participant "Enki Gate API" as API
 database "Firestore" as Firestore
 
-Owner -> UI: grant 管理画面を開く
-UI -> Firestore: owner の credential 一覧を取得
-Firestore --> UI: credential 一覧
-UI --> Owner: 委譲対象の credential を表示
+Owner -> UI: Open the sharing management screen
+UI -> Firestore: Load the owner's credential list
+Firestore --> UI: Credential list
+UI --> Owner: Show shareable credentials
 
-Owner -> UI: credential を選択
-Owner -> UI: 委譲先を入力\n(個人メールアドレスまたはメールドメイン)
-UI -> API: grant 作成を要求
-API -> Firestore: grant を保存
-Firestore --> API: 保存完了
-API --> UI: grant 作成成功
-UI --> Owner: 委譲完了を表示
+Owner -> UI: Select a credential
+Owner -> UI: Enter the grantee\n(individual email or email domain)
+UI -> API: Request grant creation
+API -> Firestore: Store the grant and update allowed targets
+Firestore --> API: Storage complete
+API --> UI: Grant creation succeeded
+UI --> Owner: Show completion
 @enduml
