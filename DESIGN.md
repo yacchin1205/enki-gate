@@ -1,360 +1,360 @@
 # DESIGN
 
-## ユースケース
+## Use Cases
 
-### 1. Credential owner が provider credential を登録する
+### 1. A credential owner registers a provider credential
 
-- 主アクター: Credential owner
-- 関与するもの: Enki Gate、upstream provider
-- 目的: 個人の provider API key を Enki Gate に登録し、クライアントへ生の key を配らずに利用できるようにする
-- 図: `docs/diagrams/uc01-register-credential.puml`
+- Primary actor: Credential owner
+- Involved systems: Enki Gate, upstream provider
+- Goal: Register a personal provider API key in Enki Gate so it can be used without distributing the raw key to clients
+- Diagram: `docs/diagrams/uc01-register-credential.puml`
 
 ![UC01](docs/diagrams/uc01-register-credential.png)
 
-### 2. Credential owner が他の個人またはドメインに利用権を委譲する
+### 2. A credential owner delegates usage rights to another user or domain
 
-- 主アクター: Credential owner
-- 関与するもの: Enki Gate
-- 目的: owner の credential を、他の個人ユーザーまたはメールドメイン全体に対して利用可能にする
-- 図: `docs/diagrams/uc02-grant-access.puml`
+- Primary actor: Credential owner
+- Involved systems: Enki Gate
+- Goal: Make the owner's credential available to another individual user or to an entire email domain
+- Diagram: `docs/diagrams/uc02-grant-access.puml`
 
 ![UC02](docs/diagrams/uc02-grant-access.png)
 
-### 3. Credential user が device flow で利用開始する
+### 3. A credential user starts using a credential through device flow
 
-- 主アクター: Credential user
-- 関与するもの: Enki Gate、Client application
-- 目的: client application に表示された user code を使って認証し、利用する credential を選び、client application が gateway token を受け取れる状態にする
-- 図: `docs/diagrams/uc03-issue-gateway-token.puml`
+- Primary actor: Credential user
+- Involved systems: Enki Gate, client application
+- Goal: Use a user code shown by the client application, authenticate, choose a credential, and allow the client application to receive a gateway token
+- Diagram: `docs/diagrams/uc03-issue-gateway-token.puml`
 
 ![UC03](docs/diagrams/uc03-issue-gateway-token.png)
 
-### 4. Client application が発行済み token を使って gateway を呼び出す
+### 4. A client application calls the gateway with an issued token
 
-- 主アクター: Client application
-- 関与するもの: Enki Gate、upstream provider
-- 目的: provider API key を持たずに、Enki Gate 経由で OpenAI 互換 API を利用する
-- 図: `docs/diagrams/uc05-call-gateway-api.puml`
+- Primary actor: Client application
+- Involved systems: Enki Gate, upstream provider
+- Goal: Use an OpenAI-compatible API through Enki Gate without holding the provider API key
+- Diagram: `docs/diagrams/uc05-call-gateway-api.puml`
 
 ![UC04](docs/diagrams/uc05-call-gateway-api.png)
 
-### 5. Enki Gate が利用と policy decision を監査する
+### 5. Enki Gate audits usage and policy decisions
 
-- 主アクター: Enki Gate
-- 関与するもの: Cloud Logging
-- 目的: 誰がどの credential を使い、どの client / session から利用し、どのような usage と policy outcome になったかを記録する
-- 図: `docs/diagrams/uc05-audit-usage.puml`
+- Primary actor: Enki Gate
+- Involved systems: Cloud Logging
+- Goal: Record who used which credential, from which client or session, and what usage and policy outcomes occurred
+- Diagram: `docs/diagrams/uc05-audit-usage.puml`
 
 ![UC05](docs/diagrams/uc05-audit-usage.png)
 
-### 6. Credential owner が credential または grant を取り消す
+### 6. A credential owner disables a credential or revokes a grant
 
-- 主アクター: Credential owner
-- 関与するもの: Enki Gate
-- 目的: credential 自体、または委譲済みの利用権を将来の利用から外す
-- 図: `docs/diagrams/uc06-revoke-credential-or-grant.puml`
+- Primary actor: Credential owner
+- Involved systems: Enki Gate
+- Goal: Remove a credential itself, or a previously granted usage right, from future use
+- Diagram: `docs/diagrams/uc06-revoke-credential-or-grant.puml`
 
 ![UC06](docs/diagrams/uc06-revoke-credential-or-grant.png)
 
-## Firestore コレクション設計
+## Firestore Collection Design
 
 ### `users/{uid}`
 
-- 用途: Google ログインした個人ユーザーの正規化された情報
-- 主なフィールド: `email`, `domain`, `displayName`, `photoURL`, `createdAt`, `updatedAt`
-- クライアント read: 本人のみ可
-- クライアント write: 本人の upsert のみ可。`email` と `domain` は認証情報と一致している必要がある
-- サーバ write: 可
+- Purpose: Normalized profile data for an individual user authenticated with Google
+- Main fields: `email`, `domain`, `displayName`, `photoURL`, `createdAt`, `updatedAt`
+- Client read: Only the user themselves
+- Client write: Upsert by the user themselves only. `email` and `domain` must match the authenticated identity
+- Server write: Allowed
 
 ### `credentials/{credentialId}`
 
-- 用途: credential の安全な metadata。平文 secret は持たない
-- 主なフィールド: `ownerUid`, `ownerEmail`, `provider`, `label`, `status`, `allowedUserEmails`, `allowedDomains`, `createdAt`, `updatedAt`
-- クライアント read: owner、または委譲された user / domain のみ可
-- クライアント write: 不可
-- サーバ write: 可
+- Purpose: Safe metadata for a credential. Never stores plaintext secrets
+- Main fields: `ownerUid`, `ownerEmail`, `provider`, `label`, `status`, `allowedUserEmails`, `allowedDomains`, `createdAt`, `updatedAt`
+- Client read: The owner, or a delegated user / domain
+- Client write: Not allowed
+- Server write: Allowed
 
 ### `credential_secrets/{credentialId}`
 
-- 用途: provider credential の暗号化済み secret
-- 主なフィールド: `ownerUid`, `ciphertext`, `wrappedDek`, `kmsKeyName`, `createdAt`, `updatedAt`
-- クライアント read: 不可
-- クライアント write: 不可
-- サーバ write: 可
+- Purpose: Encrypted provider secret material
+- Main fields: `ownerUid`, `ciphertext`, `wrappedDek`, `kmsKeyName`, `createdAt`, `updatedAt`
+- Client read: Not allowed
+- Client write: Not allowed
+- Server write: Allowed
 
 ### `credential_usages/{credentialId}`
 
-- 用途: owner 自身による credential 利用の集計キャッシュ
-- 主なフィールド: `credentialId`, `ownerUid`, `lastAccessAt`, `usageSummary7d`, `usageUpdatedAt`
-- クライアント read: owner のみ可
-- クライアント write: 不可
-- サーバ write: 可
+- Purpose: Cached usage summary for the owner's own usage of a credential
+- Main fields: `credentialId`, `ownerUid`, `lastAccessAt`, `usageSummary7d`, `usageUpdatedAt`
+- Client read: Owner only
+- Client write: Not allowed
+- Server write: Allowed
 
 ### `grants/{grantId}`
 
-- 用途: credential の委譲状態
-- 主なフィールド:
-  - 識別: `credentialId`, `ownerUid`, `granteeType`, `granteeValue`
-  - 状態: `status`, `createdAt`, `updatedAt`, `revokedAt`
-  - 利用集計: `lastAccessAt`, `usageSummary7d`, `usageUpdatedAt`
-- クライアント read: owner のみ可
-- クライアント write: 不可
-- サーバ write: 可
+- Purpose: Delegation state for a credential
+- Main fields:
+  - Identity: `credentialId`, `ownerUid`, `granteeType`, `granteeValue`
+  - State: `status`, `createdAt`, `updatedAt`, `revokedAt`
+  - Usage summary: `lastAccessAt`, `usageSummary7d`, `usageUpdatedAt`
+- Client read: Owner only
+- Client write: Not allowed
+- Server write: Allowed
 
 ### `token_issuances/{issuanceId}`
 
-- 用途: gateway token の発行記録
-- 主なフィールド: `actorUid`, `actorEmail`, `credentialId`, `credentialOwnerUid`, `tokenHash`, `issuedAt`, `expiresAt`
-- クライアント read: 不可
-- クライアント write: 不可
-- サーバ write: 可
+- Purpose: Issuance record for a gateway token
+- Main fields: `actorUid`, `actorEmail`, `credentialId`, `credentialOwnerUid`, `tokenHash`, `issuedAt`, `expiresAt`
+- Client read: Not allowed
+- Client write: Not allowed
+- Server write: Allowed
 
 ### `device_flows/{userCode}`
 
-- 用途: device flow の進行状態
-- 主なフィールド: `userCode`, `status`, `credentialId`, `actorUid`, `actorEmail`, `tokenHash`, `createdAt`, `expiresAt`, `authorizedAt`
-- クライアント read: 不可
-- クライアント write: 不可
-- サーバ write: 可
+- Purpose: Progress state for a device flow
+- Main fields: `userCode`, `status`, `credentialId`, `actorUid`, `actorEmail`, `tokenHash`, `createdAt`, `expiresAt`, `authorizedAt`
+- Client read: Not allowed
+- Client write: Not allowed
+- Server write: Allowed
 
-## Firestore 設計上の要点
+## Firestore Design Notes
 
-- `credentials` と `credential_secrets` は分ける。UI が参照する可能性があるのは `credentials` だけで、`credential_secrets` は常にサーバ専用にする
-- `credential_usages` は owner 自身の利用実績を保持する。`credentials` は共有先にも read されるため、owner usage を同居させない
-- `grants` は委譲の正規データかつ共有利用の usage 集計の保持先として持つ
-- `credentials.allowedUserEmails` と `credentials.allowedDomains` は、UI の直接クエリと Security Rules を単純に保つための派生データとして持つ
-- grant の作成と取り消しは API が行い、そのたびに `grants` と `credentials.allowed*` を一緒に更新する
-- grant の取り消しは物理削除ではなく論理状態遷移として扱い、usage と監査の参照に必要なレコードは保持する
-- `credentials.allowed*` は active な grant だけを反映する派生データであり、revoked grant は含めない
-- grant の identity は `(credentialId, granteeType, granteeValue)` で一意に定まる。`grantId` はこの組に対して安定して決まるものとして扱う
-- 同じ共有先に再度共有する場合は新しい grant を増やさず、既存 grant を `revoked -> active` に戻す
-- 再共有時も `createdAt` は維持し、最新の状態変更時刻は `updatedAt` に、owner が共有を止めた時刻は `revokedAt` に保持する
-- `lastAccessAt` と `usageSummary7d` は grant の利用実績を示す。共有の停止後も履歴として保持し、実際の利用有無の確認はこれらと監査ログで行う
-- owner 自身の利用実績は `credential_usages/{credentialId}` に保持し、shared user に見えない owner 専用情報として扱う
-- device flow の状態は `device_flows/{userCode}` に持ち、browser 側は `userCode` で認可対象を特定する
-- `deviceCode` は `device_flows` のフィールドとして保持し、client 側の polling で照合する
-- `userCode` は、人間が認可対象の device flow を特定し、誤認可を避けるための確認コードとして使う
-- audit log の本流は Firestore ではなく Cloud Logging に出す
-- 監査ログには少なくとも `actorUid`, `actorEmail`, `credentialId`, `credentialOwnerUid`, `eventType`, `result`, `timestamp` を含める
+- `credentials` and `credential_secrets` are separate. The UI may read `credentials`, but `credential_secrets` is always server-only.
+- `credential_usages` stores the owner's own usage history. `credentials` may be readable by delegated users, so owner-only usage must not live there.
+- `grants` are the source of truth for delegation state and the storage location for shared-usage summaries.
+- `credentials.allowedUserEmails` and `credentials.allowedDomains` are derived data used to keep UI queries and Security Rules simple.
+- Grant creation and revocation are performed by the API, which updates both `grants` and `credentials.allowed*` together.
+- Grant revocation is modeled as a logical state transition rather than physical deletion, so usage and audit references remain available.
+- `credentials.allowed*` reflects active grants only. Revoked grants are excluded.
+- Grant identity is uniquely determined by `(credentialId, granteeType, granteeValue)`. `grantId` is treated as a stable identifier derived from that tuple.
+- Re-sharing to the same target does not create a new grant. It reactivates the existing grant from `revoked` back to `active`.
+- On re-share, `createdAt` is preserved. The latest state change is reflected in `updatedAt`, and the owner's revocation time is preserved in `revokedAt`.
+- `lastAccessAt` and `usageSummary7d` represent shared usage for a grant. They remain after revocation so historical usage can still be inspected alongside audit logs.
+- The owner's own usage is stored in `credential_usages/{credentialId}` and treated as owner-only information that is not visible to shared users.
+- Device flow state lives in `device_flows/{userCode}`. The browser identifies the target flow using `userCode`.
+- `deviceCode` is stored as a field inside `device_flows` and is used by the client for polling.
+- `userCode` is the human-facing confirmation code used to identify the target device flow and reduce accidental authorization.
+- The primary audit trail lives in Cloud Logging, not Firestore.
+- Audit logs must contain at least `actorUid`, `actorEmail`, `credentialId`, `credentialOwnerUid`, `eventType`, `result`, and `timestamp`.
 
-## Grant の状態モデル
+## Grant State Model
 
-### grant の意味
+### What a Grant Means
 
-- grant は「ある credential を、ある共有先に使わせる関係」そのものを表す
-- 共有を止めても grant の履歴と利用実績は残す
-- 共有を再開しても同じ関係の再有効化として扱い、別 grant は作らない
+- A grant represents the relationship "this credential may be used by this target"
+- Revoking sharing does not remove the grant's history or usage summary
+- Re-sharing is treated as reactivation of the same relationship, not as creation of a different grant
 
-### grant の状態
+### Grant States
 
 - `active`
-  - 現在有効な共有
-  - `credentials.allowedUserEmails` または `credentials.allowedDomains` に反映される
-  - device flow の認可対象になり得る
+  - A currently valid share
+  - Reflected in `credentials.allowedUserEmails` or `credentials.allowedDomains`
+  - Eligible for device flow authorization
 - `revoked`
-  - owner が将来の利用を止めた共有
-  - `credentials.allowed*` には反映されない
-  - device flow の認可対象にはならない
-  - usage 集計と監査参照のため grant record 自体は保持する
+  - A share that the owner has stopped for future use
+  - Not reflected in `credentials.allowed*`
+  - Not eligible for device flow authorization
+  - The grant record remains for usage summaries and audit references
 
-### grant のタイムスタンプ
+### Grant Timestamps
 
 - `createdAt`
-  - その共有関係が最初に作られた時刻
-  - 再共有しても更新しない
+  - The time this sharing relationship was first created
+  - Not updated on re-share
 - `updatedAt`
-  - grant の状態や集計以外の管理情報が最後に変わった時刻
-  - revoke / 再共有では更新する
+  - The last time grant state or non-summary management information changed
+  - Updated on revoke and re-share
 - `revokedAt`
-  - owner が共有を止めた時刻
-  - `status = revoked` のときにのみ意味を持つ
-  - 再共有時は unset / null 相当に戻す
+  - The time the owner stopped the share
+  - Meaningful only when `status = revoked`
+  - Cleared on re-share
 - `lastAccessAt`
-  - その grant 経由で最後に利用が成功した時刻
-  - 共有停止後も履歴として残す
+  - The time of the most recent successful usage through that grant
+  - Preserved even after revocation
 
-### grant の再共有
+### Re-sharing a Grant
 
-- 同じ `credentialId`, `granteeType`, `granteeValue` への再共有は、既存 grant の再有効化として扱う
-- 再共有時に新しい grant record や新しい grantId は作らない
-- 再共有時は `status = active`, `updatedAt` 更新, `revokedAt` 解除を行う
-- `createdAt`, `lastAccessAt`, `usageSummary7d` は保持する
+- Re-sharing to the same `credentialId`, `granteeType`, and `granteeValue` reactivates the existing grant
+- No new grant record or new `grantId` is created
+- Re-sharing sets `status = active`, updates `updatedAt`, and clears `revokedAt`
+- `createdAt`, `lastAccessAt`, and `usageSummary7d` are preserved
 
-### grant と利用実績
+### Grants and Usage
 
-- grant の利用実績は `lastAccessAt`, `usageSummary7d`, `usageUpdatedAt` に集約する
-- grant を物理削除すると共有関係に紐づく統計が失われるため、revoke では削除しない
-- 実際に使われていたか、いつ止められたかは grant record と監査ログを併せて判断する
+- Shared usage for a grant is summarized in `lastAccessAt`, `usageSummary7d`, and `usageUpdatedAt`
+- Physical deletion would lose grant-linked statistics, so revoke does not delete the grant
+- Whether a grant was actually used, and when it was stopped, must be determined by looking at both the grant record and the audit log
 
-## Security Rules の方針
+## Security Rules Strategy
 
 ### `users`
 
-- 本人だけが read できる
-- 本人だけが create / update できる
-- `email` と `domain` は `request.auth` と一致しなければならない
+- Only the user themselves may read
+- Only the user themselves may create or update
+- `email` and `domain` must match `request.auth`
 
 ### `credentials`
 
-- owner は read 可
-- `allowedUserEmails` に自分の email が含まれる場合は read 可
-- `allowedDomains` に自分の domain が含まれる場合は read 可
-- クライアント write は不可
+- The owner may read
+- A user may read if their email is included in `allowedUserEmails`
+- A user may read if their domain is included in `allowedDomains`
+- Client writes are not allowed
 
 ### `credential_secrets`
 
-- クライアントからの read / write は常に不可
+- Client reads and writes are always denied
 
 ### `credential_usages`
 
-- owner だけが read 可
-- クライアント write は不可
+- Only the owner may read
+- Client writes are not allowed
 
 ### `grants`
 
-- owner だけが read 可
-- クライアント write は不可
+- Only the owner may read
+- Client writes are not allowed
 
 ### `token_issuances`
 
-- クライアントからの read / write は常に不可
+- Client reads and writes are always denied
 
 ### `device_flows`
 
-- クライアントからの read / write は常に不可
+- Client reads and writes are always denied
 
-## 画面設計
+## Screen Design
 
-### 画面一覧
+### Screen List
 
-#### 1. サインイン画面
+#### 1. Sign-in Screen
 
-- 目的: Google ログインを開始する
-- 主な要素: サービス説明、`Sign in with Google`
-- 遷移先: 利用開始画面、またはログイン前に要求されていた画面
+- Purpose: Start Google sign-in
+- Main elements: Service description, `Sign in with Google`
+- Transitions: Usage start screen, or whichever screen required authentication
 
-#### 2. ホーム画面
+#### 2. Home Screen
 
-- 目的: Enki Gate の主要機能への入口をまとめる
-- 主な要素: Credential 管理への導線
-- 遷移先: 各管理画面
+- Purpose: Provide entry points to the main Enki Gate functions
+- Main elements: Navigation to credential management
+- Transitions: Individual management screens
 
-#### 3. Credential 一覧画面
+#### 3. Credential List Screen
 
-- 目的: 自分が登録した provider credential を確認する
-- 主な要素: 状態付き credential 一覧、`新規登録`、`詳細`、状態に応じた `無効化` または `再有効化`
-- 遷移先: Credential 登録画面、Credential 詳細画面
+- Purpose: Show the provider credentials registered by the current user
+- Main elements: Status-aware credential list, `New`, `Details`, and either `Disable` or `Re-enable` depending on state
+- Transitions: Credential registration screen, credential detail screen
 
-#### 4. Credential 登録画面
+#### 4. Credential Registration Screen
 
-- 目的: provider credential を登録する
-- 主な要素: provider 選択、API key 入力、ラベル、`登録`
-- 遷移先: Credential 一覧画面
+- Purpose: Register a provider credential
+- Main elements: Provider selection, API key input, label, `Register`
+- Transitions: Credential list screen
 
-#### 5. Credential 詳細画面
+#### 5. Credential Detail Screen
 
-- 目的: credential の詳細、owner 自身の利用状況、共有状態、共有履歴、grant ごとの利用状況を確認し、共有の停止や再共有を管理する
-- 主な要素:
-  - credential 情報
-  - owner 自身の利用状況
-  - credential の状態に応じた `無効化` または `再有効化`
-  - 状態付き grant 一覧
-  - grant ごとの usage 情報
-  - `委譲追加`
-  - grant の状態に応じた `取り消し` または `再共有`
-- 遷移先: Grant 作成画面
+- Purpose: Show credential details, the owner's own usage, sharing state, sharing history, and per-grant usage, and allow share management
+- Main elements:
+  - Credential information
+  - The owner's own usage summary
+  - `Disable` or `Re-enable` depending on credential state
+  - State-aware grant list
+  - Per-grant usage summary
+  - `Add delegation`
+  - `Revoke` or `Re-share` depending on grant state
+- Transitions: Grant creation screen
 
-#### 6. Grant 作成画面
+#### 6. Grant Creation Screen
 
-- 目的: 個人またはドメインに対して利用権を委譲する
-- 主な要素: 委譲先入力、`作成`
-- 遷移先: Credential 詳細画面
+- Purpose: Delegate usage rights to an individual or a domain
+- Main elements: Grantee input, `Create`
+- Transitions: Credential detail screen
 
-#### 7. Device flow 認可画面
+#### 7. Device Flow Authorization Screen
 
-- 目的: user code を入力し、利用する credential を選んで device flow を完了する
-- 主な要素: user code 入力、利用可能 credential 一覧、`この credential を使う`
-- 遷移先: 完了画面
+- Purpose: Enter the user code, choose a credential, and complete device flow authorization
+- Main elements: User code input, available credential list, `Use this credential`
+- Transitions: Completion screen
 
-#### 8. Device flow 完了画面
+#### 8. Device Flow Completion Screen
 
-- 目的: client application 側で利用開始できる状態になったことをユーザーに伝える
-- 主な要素: 完了メッセージ
-- 遷移先: なし
+- Purpose: Tell the user that the client application can now start using the service
+- Main elements: Completion message
+- Transitions: None
 
-### 主要遷移
+### Main Transitions
 
-#### 通常操作
+#### Normal Flow
 
-- サインイン画面 -> ホーム画面
-- ホーム画面 -> Credential 一覧画面
+- Sign-in screen -> home screen
+- Home screen -> credential list screen
 
-#### Credential 管理
+#### Credential Management
 
-- Credential 一覧画面 -> Credential 登録画面
-- Credential 一覧画面 -> Credential 詳細画面
-- Credential 登録画面 -> Credential 一覧画面
-- Credential 詳細画面 -> Grant 作成画面
-- Grant 作成画面 -> Credential 詳細画面
+- Credential list screen -> credential registration screen
+- Credential list screen -> credential detail screen
+- Credential registration screen -> credential list screen
+- Credential detail screen -> grant creation screen
+- Grant creation screen -> credential detail screen
 
-#### Device flow
+#### Device Flow
 
-- Client application -> user code 表示
-- user code 表示 -> サインイン画面
-- サインイン画面 -> Device flow 認可画面
-- Device flow 認可画面 -> Device flow 完了画面
+- Client application -> user code display
+- User code display -> sign-in screen
+- Sign-in screen -> device flow authorization screen
+- Device flow authorization screen -> device flow completion screen
 
-### 画面設計上の前提
+### Screen-Level Assumptions
 
-- token をユーザーに手でコピーさせない
-- 利用開始は device flow で完結させる
-- 一覧取得は可能な限り Firestore 直読みを前提にする
-- 状態変更は監査のため API 経由に寄せる
-- Credential 詳細画面の grant 一覧は active / revoked の両方を表示対象とし、現在の共有状態と過去の共有履歴を同じ資源として扱う
-- Credential 詳細画面では owner 自身の利用状況と shared user の利用状況を分けて表示する
-- grant 一覧には少なくとも共有先、状態、利用状況、主要な時刻情報を表示し、取り消し後も usage と監査上の参照を失わない
+- Users must not be asked to copy tokens manually
+- Usage onboarding should complete entirely through device flow
+- List retrieval should use direct Firestore reads where possible
+- State-changing operations should prefer APIs for auditability
+- The grant list on the credential detail screen shows both active and revoked grants and treats current sharing state and sharing history as the same resource
+- The credential detail screen shows the owner's own usage separately from shared-user usage
+- The grant list must show at least the share target, state, usage summary, and key timestamps, and revocation must not erase usage or audit references
 
-## 外部インターフェース設計
+## External Interface Design
 
-### 設計方針
+### Design Principles
 
-- 一覧取得のような状態参照は、可能な限り Firestore 直読みで行う
-- 状態変更、token 発行、provider 通信、監査を伴う処理は API 経由で行う
-- 管理 API は Firebase Authentication による認証済みユーザーを前提とする
-- 利用開始は device flow で行う
+- Stateful reads such as list retrieval should use direct Firestore reads where possible
+- State changes, token issuance, provider communication, and auditing should go through APIs
+- Management APIs assume a user authenticated with Firebase Authentication
+- Usage onboarding is handled through device flow
 
 ### Browser Flow
 
 #### `GET /device`
 
-- 用途: user code の入力画面を表示する
-- 認証: 不要
-- 主な処理:
-  - 未認証ならサインイン画面へ進める
-  - 認証済みなら device flow 認可画面を表示する
-  - user code に対応する認可対象を人間が確認できるようにする
-- クエリパラメータ:
-  - `client_name` を任意で受け付ける
-  - `client_name` は画面上の説明文に表示するための補助情報であり、認可対象の識別やセキュリティ判断には使わない
-  - `user_code` はクエリパラメータで受け取らない。認可対象の特定は引き続き人間が入力する `user_code` によって行う
+- Purpose: Show the user-code input screen
+- Authentication: Not required
+- Main behavior:
+  - If unauthenticated, proceed to the sign-in screen
+  - If authenticated, show the device flow authorization screen
+  - Allow a human to confirm which authorization target matches the user code
+- Query parameters:
+  - Accept optional `client_name`
+  - `client_name` is display-only helper text shown in the UI and must not be used for target identification or security decisions
+  - `user_code` is not accepted as a query parameter. Flow targeting continues to depend on the user entering `user_code` manually
 
 ### Device Flow API
 
 #### `POST /api/device-flows`
 
-- 用途: client application が device flow を開始する
-- 認証: 不要
-- 主な処理:
-  - `device_flows/{userCode}` を作成する
-  - `device_code`, `user_code`, `verification_uri`, `expires_in` を返す
-- client application 実装メモ:
-  - browser に開かせる URL は `verification_uri` に `client_name` を付与したものにしてよい
-  - 例: `https://.../device?client_name=My%20Tool`
-  - `client_name` は表示用の文字列であり、device flow の認可や token 発行の根拠にはしない
-- 仕様:
-  - `expires_in` は 600 秒
-  - `interval` は 5 秒
-- レスポンス:
+- Purpose: Let a client application start device flow
+- Authentication: Not required
+- Main behavior:
+  - Create `device_flows/{userCode}`
+  - Return `device_code`, `user_code`, `verification_uri`, and `expires_in`
+- Client implementation note:
+  - The browser URL opened by the client may append `client_name` to `verification_uri`
+  - Example: `https://.../device?client_name=My%20Tool`
+  - `client_name` is display text only and must not be used as an authorization or token-issuance input
+- Specification:
+  - `expires_in` is 600 seconds
+  - `interval` is 5 seconds
+- Response:
   - `device_code`
   - `user_code`
   - `verification_uri`
@@ -363,55 +363,55 @@
 
 #### `POST /api/device-flows/{deviceCode}/poll`
 
-- 用途: client application が device flow の完了を待つ
-- 認証: 不要
-- 主な処理:
-  - `deviceCode` に対応する device flow の状態を確認する
-  - authorized なら 1 時間有効な gateway token を発行する
-  - `token_issuances/{issuanceId}` を記録する
-  - `device_flows/{userCode}` を completed に更新する
-  - 監査イベントを出す
-- レスポンス:
-  - pending か completed か
-  - completed の場合は `access_token`, `token_type`, `expires_in`
-- 仕様:
-  - pending の間は token を返さない
-  - expired の場合は失敗を返す
-  - completed になった device flow では再発行しない
+- Purpose: Let a client application wait for device flow completion
+- Authentication: Not required
+- Main behavior:
+  - Check the state of the device flow identified by `deviceCode`
+  - If authorized, issue a gateway token valid for one hour
+  - Record `token_issuances/{issuanceId}`
+  - Update `device_flows/{userCode}` to `completed`
+  - Emit an audit event
+- Response:
+  - `pending` or `completed`
+  - If completed, `access_token`, `token_type`, and `expires_in`
+- Specification:
+  - Do not return a token while the flow is still pending
+  - Return failure if the flow is expired
+  - Do not reissue tokens for a completed device flow
 
 #### `POST /api/device-authorizations`
 
-- 用途: ブラウザ上で認証済みユーザーが user code と credential 選択により device flow を完了する
-- 認証: 必須
-- リクエスト:
+- Purpose: Let an authenticated browser user complete device flow by providing a user code and choosing a credential
+- Authentication: Required
+- Request:
   - `user_code`
   - `credential_id`
-- 主な処理:
-  - `user_code` に対応する device flow を検証する
-  - actor がその credential を利用可能であることを確認する
-  - device flow を authorized 状態にする
-  - 監査イベントを出す
-- レスポンス:
+- Main behavior:
+  - Validate the device flow identified by `user_code`
+  - Verify that the actor is allowed to use the selected credential
+  - Move the device flow into the `authorized` state
+  - Emit an audit event
+- Response:
   - `userCode`
   - `credentialId`
   - `status`
 
-### Credential 管理 API
+### Credential Management API
 
 #### `POST /api/credentials`
 
-- 用途: provider credential を登録する
-- 認証: 必須
-- リクエスト:
+- Purpose: Register a provider credential
+- Authentication: Required
+- Request:
   - `provider`
   - `label`
   - `apiKey`
-- 主な処理:
-  - upstream provider で API key を検証する
-  - API key を暗号化する
-  - `credentials/{credentialId}` と `credential_secrets/{credentialId}` を作成する
-  - 監査イベントを出す
-- レスポンス:
+- Main behavior:
+  - Validate the API key with the upstream provider
+  - Encrypt the API key
+  - Create `credentials/{credentialId}` and `credential_secrets/{credentialId}`
+  - Emit an audit event
+- Response:
   - `credentialId`
   - `provider`
   - `label`
@@ -419,44 +419,44 @@
 
 #### `POST /api/credentials/{credentialId}/disable`
 
-- 用途: credential を論理削除する
-- 認証: 必須
-- 主な処理:
-  - owner であることを確認する
-  - `credentials/{credentialId}` を無効化する
-  - 監査イベントを出す
-- レスポンス:
-  - 更新後の credential
+- Purpose: Logically disable a credential
+- Authentication: Required
+- Main behavior:
+  - Verify that the caller is the owner
+  - Disable `credentials/{credentialId}`
+  - Emit an audit event
+- Response:
+  - The updated credential
 
 #### `POST /api/credentials/{credentialId}/enable`
 
-- 用途: disabled 状態の credential を再有効化する
-- 認証: 必須
-- 主な処理:
-  - owner であることを確認する
-  - `credentials/{credentialId}` を `active` に戻す
-  - `disabledAt` を解除する
-  - 監査イベントを出す
-- レスポンス:
-  - 更新後の credential
+- Purpose: Re-enable a credential in `disabled` state
+- Authentication: Required
+- Main behavior:
+  - Verify that the caller is the owner
+  - Return `credentials/{credentialId}` to `active`
+  - Clear `disabledAt`
+  - Emit an audit event
+- Response:
+  - The updated credential
 
-### Grant 管理 API
+### Grant Management API
 
 #### `POST /api/credentials/{credentialId}/grants`
 
-- 用途: credential の利用権を委譲する
-- 認証: 必須
-- リクエスト:
+- Purpose: Delegate usage rights for a credential
+- Authentication: Required
+- Request:
   - `granteeType`
   - `granteeValue`
-- 主な処理:
-  - owner であることを確認する
-  - `(credentialId, granteeType, granteeValue)` に対応する `grantId` を解決する
-  - 既存 grant がなければ `grants/{grantId}` を作成する
-  - 既存 grant が `revoked` なら `active` に戻す
-  - `credentials.allowedUserEmails` または `credentials.allowedDomains` に対象を反映する
-  - 監査イベントを出す
-- レスポンス:
+- Main behavior:
+  - Verify that the caller is the owner
+  - Resolve `grantId` from `(credentialId, granteeType, granteeValue)`
+  - Create `grants/{grantId}` if it does not exist
+  - If the grant already exists and is `revoked`, return it to `active`
+  - Reflect the grantee in `credentials.allowedUserEmails` or `credentials.allowedDomains`
+  - Emit an audit event
+- Response:
   - `grantId`
   - `credentialId`
   - `granteeType`
@@ -464,59 +464,57 @@
 
 #### `POST /api/grants/{grantId}/revoke`
 
-- 用途: 委譲済み grant を取り消す
-- 認証: 必須
-- 主な処理:
-  - owner であることを確認する
-  - `grants/{grantId}` を `revoked` に更新する
-  - `updatedAt` と `revokedAt` を記録する
-  - `credentials.allowedUserEmails` または `credentials.allowedDomains` から対象を外す
-  - grant 自体の usage 集計と監査参照に必要な情報は保持する
-  - 監査イベントを出す
-- レスポンス:
+- Purpose: Revoke a delegated grant
+- Authentication: Required
+- Main behavior:
+  - Verify that the caller is the owner
+  - Update `grants/{grantId}` to `revoked`
+  - Record `updatedAt` and `revokedAt`
+  - Remove the target from `credentials.allowedUserEmails` or `credentials.allowedDomains`
+  - Keep the grant's usage summary and audit-reference data
+  - Emit an audit event
+- Response:
   - `grantId`
   - `status`
 
-### OpenAI 互換 API
+### OpenAI-Compatible API
 
 #### `POST /v1/chat/completions`
 
-- 用途: OpenAI 互換の chat completions を受ける
-- 認証: gateway token 必須
-- 主な処理:
-  - gateway token を検証する
-  - `token_issuances` から actor、credential owner、credential を解決する
-  - policy を評価する
-  - provider credential を復号する
-  - upstream provider に中継する
-  - usage、cost、policy decision を監査ログへ出す
+- Purpose: Accept OpenAI-compatible chat completions requests
+- Authentication: Gateway token required
+- Main behavior:
+  - Validate the gateway token
+  - Resolve the actor, credential owner, and credential from `token_issuances`
+  - Evaluate policy
+  - Decrypt the provider credential
+  - Forward the request to the upstream provider
+  - Emit usage, cost, and policy-decision audit logs
 
 #### `POST /v1/responses`
 
-- 用途: OpenAI 互換の responses API を受ける
-- 認証: gateway token 必須
-- 主な処理:
-  - `POST /v1/chat/completions` と同様
+- Purpose: Accept OpenAI-compatible responses API requests
+- Authentication: Gateway token required
+- Main behavior:
+  - Same as `POST /v1/chat/completions`
 
-### Hosting と Functions のルーティング
+### Hosting and Functions Routing
 
-- `/api/**` は Management API と Device Flow API に渡す
-- `/v1/**` は OpenAI 互換 API に渡す
-- それ以外は Hosting の SPA として `index.html` を返す
-- 画面の `/device` と API の `/api/device-authorizations` は path を分ける
+- `/api/**` is routed to the Management API and Device Flow API
+- `/v1/**` is routed to the OpenAI-compatible API
+- Everything else returns Hosting's SPA `index.html`
+- UI path `/device` and API path `/api/device-authorizations` are separated
 
-### Management API と Firestore 直読みの境界
+### Boundary Between Management API and Direct Firestore Reads
 
-- Firestore 直読み:
+- Direct Firestore reads:
   - `users`
-  - owner 自身の `grants`
-  - owner または委譲先として参照可能な `credentials`
-- Management API 経由:
-  - credential 登録、無効化、再有効化
-  - grant 作成、取り消し
-- Device Flow API:
-  - device flow 開始
-  - device flow 認可
-  - polling と gateway token 発行
-- OpenAI 互換 API:
-  - OpenAI 互換 API 呼び出し
+  - The owner's own `grants`
+  - `credentials` readable either as owner or delegated user
+- Through the Management API:
+  - Credential registration, disable, and re-enable
+  - Grant creation and revoke
+- Through the Device Flow API:
+  - Device flow start
+  - Device flow authorization
+  - Polling and gateway token issuance
