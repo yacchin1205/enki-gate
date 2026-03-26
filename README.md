@@ -2,6 +2,8 @@
 
 Enki Gate is an auditable AI access gateway that sits between untrusted or semi-trusted clients and upstream LLM providers.
 
+> Enki: a Mesopotamian god of wisdom, water, creation, and order.
+
 The goal is simple: do not distribute provider API keys to clients. Instead, centralize authentication, authorization, gateway-token issuance, and auditing for AI access on the gateway side. The OpenAI-compatible API exists as a way to apply that control layer to existing tools without forcing them to adopt a custom protocol.
 
 ## What Enki Gate Governs
