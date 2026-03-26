@@ -24,7 +24,7 @@ Rather than scattering those decisions across clients, Enki Gate keeps them in o
 
 ## Permission Model
 
-The primary subject is an individual user. A user can register their own provider credential in Enki Gate and delegate the right to use it to other individuals or to an email domain. For example, `yazawa@voice-research.com` can allow `hulk@voice-research.com` or `*@voice-research.com` to use that credential.
+The primary subject is an individual user. A user can register their own provider credential in Enki Gate and delegate the right to use it to other individuals or to an email domain. For example, `owner@example.com` can allow `learner@example.com` or `*@example.com` to use that credential.
 
 What is delegated is not the API key itself. What is delegated is the right to use it. Users authenticate as themselves and then choose whether to use their own credential or one that has been delegated to them. Clients such as Binder receive only a short-lived token issued by Enki Gate for that choice.
 
