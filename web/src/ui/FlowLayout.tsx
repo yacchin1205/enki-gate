@@ -3,6 +3,7 @@ import Container from "@mui/material/Container";
 import Typography from "@mui/material/Typography";
 import { Outlet } from "react-router-dom";
 import { useIntl } from "react-intl";
+import { FlowFooter } from "./components/FlowFooter";
 
 export function FlowLayout() {
   const intl = useIntl();
@@ -24,6 +25,7 @@ export function FlowLayout() {
           </Typography>
         </Box>
         <Outlet />
+        <FlowFooter />
       </Container>
     </Box>
   );

@@ -15,6 +15,7 @@ import { useState, type MouseEvent } from "react";
 import { useIntl } from "react-intl";
 import { Link as RouterLink, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
+import { AppFooter } from "./components/AppFooter";
 
 export function AppLayout() {
   const { user } = useAuth();
@@ -30,7 +31,7 @@ export function AppLayout() {
   }
 
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
+    <Box sx={{ minHeight: "100vh", bgcolor: "background.default", display: "flex", flexDirection: "column" }}>
       <AppBar color="inherit" elevation={0} position="sticky" sx={{ borderBottom: 1, borderColor: "divider" }}>
         <Toolbar sx={{ gap: 2 }}>
           <Typography
@@ -72,9 +73,10 @@ export function AppLayout() {
           </Menu>
         </Toolbar>
       </AppBar>
-      <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Container maxWidth="lg" sx={{ py: 4, flexGrow: 1 }}>
         <Outlet />
       </Container>
+      <AppFooter />
     </Box>
   );
 }
